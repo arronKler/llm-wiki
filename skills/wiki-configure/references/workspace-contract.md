@@ -1,42 +1,52 @@
-# Workspace 契约与可选 Obsidian 集成
+# Workspace Contract and Optional Obsidian Integration
 
-CLI 的旧版 `--vault` 参数仍作为 `--workspace` 的等价别名，不要求存在 `.obsidian/`。Markdown 与本地文件是权威层；Obsidian 只是可选前端。
+Keep the legacy CLI option `--vault` as an alias for `--workspace`. Do not require `.obsidian/`. Treat Markdown and local files as the authoritative layer and Obsidian as an optional frontend.
 
-## 默认层级
+## Use the default hierarchy
 
-| 路径 | owner | 规则 |
+| Path | Owner | Rule |
 | --- | --- | --- |
-| `data/`, `inbox/`, `notes/` | human | 可读；仅在用户明确指定内容时写入 |
-| `raw/sources/` | capture tool | exclusive-create、append-only，旧版本永不修改 |
-| `raw/derived/` | agent/tool | OCR、转写、规范化；可重建且必须回溯 raw |
-| `wiki/` | agent | 可维护的长期综合知识 |
-| `outputs/` | agent | 报告、表格、slides 等 derived deliverables |
-| `.wiki/` | system | config、policy、events、transactions、state |
-| `.obsidian/` | human/app | 默认不修改 |
+| `data/`, `inbox/`, `notes/` | Human | Read freely; write only when the user explicitly names the content. |
+| `raw/sources/` | Capture tool | Create exclusively and append only; never modify an existing version. |
+| `raw/derived/` | Agent/tool | Store rebuildable OCR, transcripts, and normalization that trace to raw evidence. |
+| `wiki/` | Agent | Maintain durable, connected synthesis. |
+| `outputs/` | Agent | Store reports, tables, slides, and other derived deliverables. |
+| `.wiki/` | System | Store config, policy, events, transactions, and state. |
+| `.obsidian/` | Human/app | Leave unchanged by default. |
 
-在 `.wiki/config.json` 中映射实际路径。已有 workspace 可以把其他 glob 声明为 human-owned 或 agent-owned；不要为追求默认目录而移动内容。
+Map actual paths in `.wiki/config.json`. Declare additional globs as human-owned or agent-owned when an existing workspace needs them. Do not move content merely to match the default hierarchy.
 
-把 Markdown wiki 视为权威综合层。把 FTS、vector、qmd、Dataview、Bases 结果和 generated catalogs 视为可重建索引或视图，而非事实来源。
+Treat the Markdown wiki as authoritative synthesis. Treat FTS, vectors, qmd, Dataview, Bases results, and generated catalogs as rebuildable indexes or views, never as factual sources.
 
-## 系统文件
+## Preserve language
 
-采用以下职责：
+Treat `.wiki/config.json` `language` as the persistent-content language, not the reply language. Use either `auto` or a BCP 47-style language tag such as `en`, `zh-CN`, or `pt-BR`.
 
-- `.wiki/config.json`：版本、路径映射、搜索 backend 和有限的运行选项；
-- `.wiki/policy.md`：authority、classification、external tool 与写入边界；
-- `wiki/_schema.md`：页面类型、Properties、citation 和写作规则；
-- `.wiki/events/`：一操作一事件文件；
-- `.wiki/transactions/`：写前 hash、候选 patch 和提交状态；
-- `.wiki/state/`：锁、缓存与其他可重建状态；
-- `wiki/_index.md`：人工维护的内容导航；
-- `wiki/_catalog.md`、`_sources.md`、`_backlinks.json`：生成导航；
-- `wiki/Wiki.base`：仅在检测到 Obsidian workspace 时创建的可选 Bases 视图。
+- Answer and report in the user's language.
+- With an explicit language tag, write new persistent knowledge in that language.
+- With `auto`, use the established primary language of non-generated wiki pages and human-owned notes. If none exists, use the user's language. System scaffolds, frontmatter property names, generated indexes, and raw quotations do not establish a workspace language.
+- In a mixed-language workspace, preserve the target page's language. For a new page with no clear precedent, follow the user's language or ask only when the choice materially affects the result.
+- Preserve quotations, source titles, proper names, and existing knowledge in their original language unless the user explicitly requests translation.
 
-不要让 CLI 覆盖 `_index.md`。不要要求 log 由多个 agent append；需要时间线时从 event files 生成。
+Preserve an existing valid setting during initialization. When the user explicitly chooses a workspace content language, persist its normalized language tag and record a configure event. Do not silently convert an existing explicit tag back to `auto`.
 
-## 页面 Properties
+## Keep system-file responsibilities distinct
 
-新知识页至少包含 `title`、`type`、`created`、`updated`、`sources`。稳定公共字段为：
+- Use `.wiki/config.json` for version, path mappings, search backend, and limited runtime options.
+- Use `.wiki/policy.md` for authority, classification, external-tool, and writing boundaries.
+- Use `wiki/_schema.md` for page types, properties, citations, and writing rules.
+- Write one operation per file in `.wiki/events/`.
+- Use `.wiki/transactions/` for pre-write hashes, candidate patches, and commit state.
+- Use `.wiki/state/` for locks, caches, and other rebuildable state.
+- Keep `wiki/_index.md` as curated, human-maintained navigation.
+- Treat `wiki/_catalog.md`, `_sources.md`, and `_backlinks.json` as generated navigation.
+- Create `wiki/Wiki.base` only as an optional Bases view when an Obsidian workspace is detected.
+
+Never let the CLI overwrite `_index.md`. Do not require multiple agents to append to one shared log; generate timelines from event files instead.
+
+## Use stable page properties
+
+Require at least `title`, `type`, `created`, `updated`, and `sources` on new knowledge pages. Use these stable common fields:
 
 ```yaml
 title: Page title
@@ -53,45 +63,43 @@ confidence: medium
 sources: [src-web-0123456789ab]
 ```
 
-推荐 status：`draft`、`current`、`needs-review`、`conflicted`、`superseded`、`archived`。
+Use these recommended status values: `draft`, `current`, `needs-review`, `conflicted`, `superseded`, and `archived`.
 
-推荐 classification：`public`、`personal`、`internal`、`confidential`、`restricted`。
+Use these recommended classification values: `public`, `personal`, `internal`, `confidential`, and `restricted`.
 
-推荐 confidence：`high`、`medium`、`low`、`unknown`。
+Use these recommended confidence values: `high`, `medium`, `low`, and `unknown`.
 
-只有在 `_schema.md` 定义语义后才增加领域字段。保持标准 YAML 可被通用 Markdown 工具读取，并兼容 Obsidian Properties 和 Bases。
+Add domain-specific fields only after defining their semantics in `_schema.md`. Keep YAML readable by generic Markdown tools and compatible with Obsidian Properties and Bases when that frontend is enabled.
 
-## 页面类型
+## Reuse page types
 
-优先复用：
+- Use `entity` for a person, team, organization, customer, product, system, dataset, or place.
+- Use `concept` for a method, policy, mental model, or reusable idea.
+- Use `project` for goals, scope, owners, status, milestones, and outcomes.
+- Use `process` for a business workflow, responsibility boundary, or runbook.
+- Use `decision` for context, options, evidence, choice, rationale, and consequences.
+- Use `metric` for definition, lineage, time semantics, limitations, and observations.
+- Use `comparison` for evaluation along explicit dimensions.
+- Use `synthesis` for a cross-source answer or evolving thesis.
+- Use `timeline` when sequence is itself important.
 
-- `entity`：人、团队、组织、客户、产品、系统、dataset、地点；
-- `concept`：方法、政策、心智模型和可复用思想；
-- `project`：目标、范围、owner、状态、里程碑与结果；
-- `process`：业务流程、责任边界或 runbook；
-- `decision`：背景、选项、证据、选择、理由与后果；
-- `metric`：定义、lineage、时间语义、限制与观测值；
-- `comparison`：沿明确维度比较；
-- `synthesis`：跨来源答案或持续演化的 thesis；
-- `timeline`：顺序本身重要的事件。
+Let folders emerge from the data instead of prebuilding a complex taxonomy. Use `domains` to classify pages across folders.
 
-让文件夹从数据中逐渐形成，不预建复杂 taxonomy。页面可通过 `domains` 跨文件夹分类。
+## Enable Obsidian only as an optional integration
 
-## 可选 Obsidian 集成
+- Use `[[wikilinks]]` for durable relationships and standard `aliases` for alternate-title resolution.
+- Use heading or block anchors such as `^claim-...` for important claims when useful.
+- Prefer lowercase kebab-case filenames; allow multilingual titles and aliases.
+- When an Obsidian workspace is detected, use Bases as the default optional visualization layer and Dataview only as an enhancement. Never require either for correctness.
+- Keep original attachments in raw evidence and reference them from derived Markdown. Do not rely on an unstable remote URL as the only evidence.
+- Never modify `.obsidian/` attachment, plugin, hotkey, or workspace settings automatically. Offer a recommendation and change them only when explicitly requested.
 
-- 使用 `[[wikilinks]]` 表达 durable relationships；使用标准 `aliases` 解析替代标题。
-- 为重要 claim 使用 heading 或 block anchor，例如 `^claim-...`。
-- 文件名尽量使用 lowercase kebab-case；title/aliases 可使用中文和多语言。
-- 检测到 Obsidian workspace 时可以把 Bases 作为默认可视化层；把 Dataview 作为可选增强，不作为必需插件。
-- 把附件原件放 raw，由 derived Markdown 引用；不要让远程易失 URL 成为唯一证据。
-- 不自动修改 `.obsidian/` 的 attachment、plugin、hotkey 或 workspace 设置。可给用户建议，只有明确要求时才改。
+## Maintain content quality and evidence
 
-## 内容质量与证据
+Trace material factual, numeric, personal, and decision claims to a raw source ID and locator. Use wiki links for navigation and citations for proof. Preserve conflicting claims and their time context; resolve them only through source authority, effective time, or a user decision.
 
-让 material factual、numeric、personal 和 decision claims 追到 raw source ID 与 locator。让 wiki links 负责导航，让 citations 负责证明。保留冲突双方和时间；只按 authority、effective time 或用户裁决解决。
+Keep human statements distinct from agent synthesis. Synthesize around topics instead of writing ingestion logs. Prefer `superseded` or `archived` status over hard deletion.
 
-让人类原话与 agent synthesis 清晰可辨。围绕主题综合，不把页面写成 ingestion log。优先标记 superseded/archived，不硬删除历史知识。
+## Enforce concurrency and security
 
-## 并发与安全
-
-保持一个写者。让 subagent 只读分析和提出 patch。写前检查 hash，冲突时停止覆盖。labels 不是 ACL；需要真正隔离的个人与公司 trust zones 应使用不同 workspace/repository。
+Use one writer. Let subagents perform read-only analysis and propose patches. Check hashes immediately before writing and stop on conflicts. Treat labels as metadata, not ACLs. Isolate personal and company trust zones with separate workspaces or repositories when technical separation is required.

@@ -1,79 +1,79 @@
-# 回答与引用契约
+# Answer and Citation Contract
 
-## 采用答案优先结构
+## Lead with the answer
 
-根据问题复杂度使用最小充分结构：
-
-```markdown
-结论：直接回答用户的问题。
-
-证据：列出最关键的 2–5 条，并就近引用 wiki 页与 raw source locator。
-
-冲突与限制：说明口径、时间、新鲜度、反例和缺失证据。
-
-截至：YYYY-MM-DD 或“当前 wiki 未记录可靠 as_of”。
-```
-
-简单事实不必机械套模板。复杂比较、决策 briefing 或分析必须把事实、推断和建议分开。
-
-## 就近提供双层引用
-
-同时提供：
-
-1. 用 `[[页面标题#相关标题]]` 或明确 workspace 相对路径帮助用户在任意 Markdown 前端导航；启用 Obsidian 时这些 wikilinks 可直接跳转；
-2. 用 raw `source_id` + locator 证明 material claim。
-
-示例：
+Use the smallest sufficient structure for the question's complexity:
 
 ```markdown
-Q2 支付转化率记录为 18.4%，口径排除退款订单。
-（[[支付转化率#2026 Q2]]；`src-report-a1b2` p.12；as_of 2026-06-30）
+Conclusion: Answer the user's question directly.
+
+Evidence: List the two to five strongest points, with nearby wiki-page and raw-source locators.
+
+Conflicts and limits: State definition differences, time boundaries, freshness, counterevidence, and missing evidence.
+
+As of: YYYY-MM-DD, or "The current wiki does not record a reliable as_of date."
 ```
 
-若只有 wiki 综合而找不到 raw citation，明确写“二手综合，原始证据未解析”，并降低 confidence。不要让多个 agent-generated 页面互相引用形成虚假证据链。
+Do not force this template onto a simple fact. For a complex comparison, decision briefing, or analysis, separate fact, inference, and recommendation.
 
-## 标记证据状态
+## Provide two-layer citations nearby
 
-使用准确措辞：
+Provide both:
 
-- “来源明确记录……”：直接证据；
-- “多个来源一致支持……”：独立来源相互印证；
-- “这表明/可以推断……”：agent interpretation；
-- “wiki 中存在冲突……”：保留双方；
-- “未找到……”：证据缺口；
-- “截至 YYYY-MM-DD……”：时间边界。
+1. `[[Page title#Relevant heading]]` or an explicit workspace-relative path so the user can navigate in any Markdown frontend; wikilinks become directly navigable when Obsidian is enabled.
+2. A raw `source_id` plus locator that supports the material claim.
 
-不要把 absence of evidence 写成 evidence of absence，不要把相关性写成因果，不要把计划写成已完成。
+Example:
 
-## 比较与业务数据
+```markdown
+The recorded Q2 payment conversion rate was 18.4%, excluding refunded orders.
+([[Payment conversion rate#2026 Q2]]; `src-report-a1b2` p.12; as_of 2026-06-30)
+```
 
-比较时先固定相同维度：定义、时间、范围、数据源、单位、成本、风险和未知项。没有同口径证据时不要给虚假的精确排序。
+If only wiki synthesis is available and no raw citation resolves, state "secondary synthesis; raw evidence unresolved" and lower confidence. Do not let multiple agent-generated pages cite one another into a false evidence chain.
 
-对 KPI/经营数据同时给出：
+## Label evidence status
 
-- metric definition 与 system of record；
-- 值、单位、窗口、filters、timezone、as_of；
-- query/source ID 与 locator；
-- freshness、confidence、异常或冲突。
+Use precise language:
 
-对建议明确区分“wiki 中的事实”“基于事实的推断”“建议动作”。
+- "The source explicitly records ..." for direct evidence.
+- "Multiple independent sources support ..." for corroboration.
+- "This suggests ..." or "It is reasonable to infer ..." for agent interpretation.
+- "The wiki contains a conflict ..." when preserving competing claims.
+- "No evidence was found ..." for an evidence gap.
+- "As of YYYY-MM-DD ..." for a time boundary.
 
-## 控制引用与原文
+Do not turn absence of evidence into evidence of absence, correlation into causation, or a plan into a completed result.
 
-只引用支撑结论的最少原文。对个人、会议或消息中的原话保留说话者和上下文；避免因截断改变含义。若用户无权查看某个敏感细节，不通过引用绕过 classification。
+## Compare consistently and report business data completely
 
-## 处理外部刷新
+Fix common comparison dimensions first: definition, time, scope, source, unit, cost, risk, and unknowns. Do not give a falsely precise ranking when the evidence is not comparable.
 
-用户要求“最新/现在”而 wiki 过期时：
+For KPI or operating data, provide:
 
-1. 先说明 wiki 的 as_of；
-2. 使用当前 agent 允许的外部工具获取 public 或获批资料；
-3. 不在外部查询中泄露 non-public 内容；
-4. 把临时外部结果与 workspace 证据分开引用；
-5. 除非用户明确要求 ingest，不把临时结果写回 wiki。
+- Metric definition and system of record.
+- Value, unit, window, filters, timezone, and `as_of`.
+- Query/source ID and locator.
+- Freshness, confidence, anomalies, and conflicts.
 
-## 生成持久化 output
+Separate facts recorded in the wiki, inferences from those facts, and recommended actions.
 
-仅在用户明确要求文件时写入 `outputs/`。为输出记录 title、type、classification、created/updated、as_of、sources，并标注 derived。让输出引用 raw source IDs，不把它作为后续事实的唯一来源。
+## Preserve language and source fidelity
 
-用户要求把新综合变成长期知识时，交给 ingest 流程重新检查页面匹配、冲突和 raw citations。
+Answer in the user's language. Preserve quotations, source titles, proper names, and existing workspace knowledge in their original language unless the user explicitly asks for translation. Quote only the minimum source text needed to support the conclusion, and retain the speaker and context for personal, meeting, or message excerpts. Do not bypass classification through a quotation.
+
+## Handle external refreshes
+
+When the user asks for the latest or current state and the wiki is stale:
+
+1. State the wiki's `as_of` first.
+2. Use only external tools permitted for the active agent and public or approved data.
+3. Do not leak non-public content in an external query.
+4. Cite temporary external results separately from workspace evidence.
+5. Do not write temporary results back to the wiki unless the user explicitly requests ingest.
+
+## Produce a persistent output only when requested
+
+Write under `outputs/` only when the user explicitly requests a file. Record title, type, classification, created/updated, `as_of`, and sources, and mark the file as derived. Cite raw source IDs, and do not make the output the sole evidence for a later fact.
+
+When the user wants new synthesis to become long-term knowledge, hand it to the ingest workflow to recheck page matching, conflicts, and raw citations.

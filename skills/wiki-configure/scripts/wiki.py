@@ -36,12 +36,13 @@ SUITE_NAMES = ("wiki-ingest", "wiki-query", "wiki-maintain", "wiki-configure")
 WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 HEADING_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 URL_RE = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+LANGUAGE_TAG_RE = re.compile(r"^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$")
 GENERATED_NAMES = {"_catalog.md", "_sources.md", "_backlinks.json", "_lint.md"}
 GENERATED_MARKER = "<!-- generated-by: llm-wiki; safe-to-rebuild -->"
 BRIDGE_MARKERS = ("generated-by: llm-wiki", "generated-by: managed-obsidian-wiki")
 DEFAULT_CONFIG: dict[str, Any] = {
     "schema_version": 1,
-    "language": "zh-CN",
+    "language": "auto",
     "paths": {
         "human_owned": ["data", "inbox", "notes"],
         "raw_sources": "raw/sources",
@@ -227,8 +228,9 @@ def validate_config(root: Path, config: dict[str, Any]) -> None:
     """Validate the complete path contract before any command can write."""
     if type(config.get("schema_version")) is not int or config["schema_version"] < 1:
         raise WikiError("schema_version must be a positive integer.")
-    if not isinstance(config.get("language"), str) or not config["language"].strip():
-        raise WikiError("language must be a non-empty string.")
+    language = config.get("language")
+    if not isinstance(language, str) or (language != "auto" and not LANGUAGE_TAG_RE.fullmatch(language)):
+        raise WikiError("language must be 'auto' or a BCP 47-style language tag such as 'en' or 'zh-CN'.")
     paths = config.get("paths")
     if not isinstance(paths, dict):
         raise WikiError("Configuration paths must be a JSON object.")

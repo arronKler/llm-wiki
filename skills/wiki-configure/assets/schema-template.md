@@ -74,9 +74,9 @@ Create a page when the subject is central to one source, appears in multiple sou
 Every material factual, numeric, personal, or decision claim must trace to a raw source ID. Cite at claim or paragraph level when precision matters:
 
 ```markdown
-支付转化率在 2026-06-30 为 18.4%。[^src-report-a1b2-p12] ^claim-7f3a
+Payment conversion was 18.4% as of 2026-06-30.[^src-report-a1b2-p12] ^claim-7f3a
 
-[^src-report-a1b2-p12]: `src-report-a1b2`，第 12 页，快照于 2026-07-14。
+[^src-report-a1b2-p12]: `src-report-a1b2`, p. 12, captured 2026-07-14.
 ```
 
 Use a stable locator when available: page, line, heading, block, timestamp, message ID, row key, query ID, or commit SHA. Derived pages must cite raw evidence, not only another generated summary. Keep `sources` in frontmatter as the complete source-ID set used by the page.
@@ -103,6 +103,14 @@ Use a stable locator when available: page, line, heading, block, timestamp, mess
 ## Writing standard
 
 Lead with the answer or definition. Write neutral, concrete prose organized by theme. Synthesize across sources instead of listing source summaries. Use dates, units, owners, and attributed statements in place of vague adjectives. State evidence gaps and uncertainty plainly. A page should explain why its subject matters within this wiki, not reproduce a generic encyclopedia entry.
+
+## Language
+
+- Answer and report in the user's language.
+- For new persistent knowledge, honor an explicit workspace language. When the workspace language is `auto`, use the established primary language of non-generated knowledge; if none exists, use the user's language.
+- Do not infer the primary language from system scaffolds, property names, generated indexes, or raw quotations. In a mixed-language workspace, preserve the target page's language and ask only when the choice would materially affect a new page.
+- Keep quotations, source titles, proper names, and existing knowledge in their original language unless translation is requested.
+- Do not translate or rewrite existing knowledge solely for language consistency without explicit authorization.
 
 ## Schema evolution
 

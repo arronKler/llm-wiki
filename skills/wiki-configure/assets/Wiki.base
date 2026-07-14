@@ -9,28 +9,28 @@ filters:
     - 'file.name != "_lint"'
 properties:
   file.name:
-    displayName: 页面
+    displayName: Page
   type:
-    displayName: 类型
+    displayName: Type
   domains:
-    displayName: 领域
+    displayName: Domains
   status:
-    displayName: 状态
+    displayName: Status
   classification:
-    displayName: 敏感度
+    displayName: Classification
   updated:
-    displayName: 更新日期
+    displayName: Updated
   as_of:
-    displayName: 数据截至
+    displayName: As of
   review_after:
-    displayName: 复核日期
+    displayName: Review after
   confidence:
-    displayName: 置信度
+    displayName: Confidence
   sources:
-    displayName: 来源
+    displayName: Sources
 views:
   - type: table
-    name: 全部知识
+    name: All knowledge
     groupBy:
       property: type
       direction: ASC
@@ -44,7 +44,7 @@ views:
       - confidence
       - sources
   - type: table
-    name: 待复核
+    name: Needs review
     filters:
       or:
         - 'status == "needs-review"'
@@ -57,7 +57,7 @@ views:
       - as_of
       - sources
   - type: table
-    name: 最近更新
+    name: Recently updated
     filters:
       and:
         - 'updated >= today() - "30d"'

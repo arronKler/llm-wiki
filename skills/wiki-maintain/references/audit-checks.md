@@ -1,86 +1,86 @@
-# Wiki 审计检查
+# Wiki Audit Checks
 
-## 确定性检查
+## Deterministic checks
 
-优先运行 CLI `lint` 与 `doctor`，再补充只读检查。至少覆盖：
+Run CLI `lint` and `doctor` first, then add read-only checks. Cover at least the following areas.
 
-### 所有权与不可变性
+### Ownership and immutability
 
-- human-owned 路径是否被 agent state 或生成文件污染；
-- raw source 是否缺少 metadata/hash，记录哈希与实际字节是否一致；
-- 同一 source ID 是否指向不同内容；
-- derived 是否能追到 raw，output 是否被当成 primary evidence；
-- 可选 `.obsidian/`、policy、schema 或 adapter 是否出现未记录修改。
+- Check whether agent state or generated files pollute human-owned paths.
+- Check whether a raw source lacks metadata or a hash, and whether the recorded hash matches the stored bytes.
+- Check whether one source ID refers to different content.
+- Check whether derived content traces to raw evidence and whether an output is being treated as primary evidence.
+- Check whether optional `.obsidian/`, policy, schema, or adapter files changed without a recorded operation.
 
-### Schema 与身份
+### Schema and identity
 
-- 新页是否具有 `title`、`type`、`created`、`updated`、`sources`；
-- 日期、list、controlled value 和 YAML 是否符合通用 frontmatter，并在启用 Obsidian 时能被 Properties/Bases 解析；
-- title、aliases、旧 `also` 是否重复或冲突；
-- filename、title 与 wikilink target 是否稳定；
-- source ID、claim/block ID 是否唯一。
+- Check that a new page has `title`, `type`, `created`, `updated`, and `sources`.
+- Check that dates, lists, controlled values, and YAML are valid generic frontmatter and, when Obsidian is enabled, parse correctly in Properties and Bases.
+- Check titles, aliases, and legacy `also` values for duplicates or conflicts.
+- Check that filenames, titles, and wikilink targets are stable.
+- Check that source IDs and claim or block IDs are unique.
 
-### 链接与索引
+### Links and indexes
 
-- broken wikilinks、missing anchors、自链接和错误大小写；
-- orphan pages、无入链的关键实体、高入链但不存在的目标；
-- `_catalog.md`、`_sources.md`、`_backlinks.json` 是否落后；
-- 人工 `_index.md` 是否被生成器覆盖或遗漏重要页；
-- 若启用 Obsidian，`Wiki.base` 是否排除系统/生成页并使用现有 properties。
+- Check broken wikilinks, missing anchors, self-links, and incorrect case.
+- Check orphan pages, important entities without inbound links, and heavily referenced missing targets.
+- Check whether `_catalog.md`, `_sources.md`, and `_backlinks.json` are stale.
+- Check whether generated content overwrote the curated `_index.md` or whether that index omits important pages.
+- When Obsidian is enabled, check that `Wiki.base` excludes system and generated pages and uses existing properties.
 
-### 引用与敏感度
+### Citations and classification
 
-- material claims 是否有 raw source ID；
-- citation 是否解析到存在的 source 和有效 locator；
-- 是否只引用另一篇 generated wiki/output，形成 citation laundering；
-- 页面和 output 是否继承最高输入 classification；
-- public output 是否引用 non-public 内容；
-- 是否把 credential、token、cookie、私钥写入 workspace。
+- Check whether material claims cite a raw source ID.
+- Check whether each citation resolves to an existing source and a valid locator.
+- Check whether generated wiki pages or outputs cite only one another, creating citation laundering.
+- Check whether pages and outputs inherit the highest input classification.
+- Check whether a public output refers to non-public content.
+- Check whether credentials, tokens, cookies, or private keys were written into the workspace.
 
-### 兼容与桥接
+### Compatibility and bridges
 
-- 旧 `raw/entries` 是否仍可检索，旧 source ID 是否仍解析；
-- `also`、`last_updated`、`_index.md`、`_backlinks.json` 是否仍被支持；
-- `.agents/skills` canonical source 与 Codex/Claude wrappers 是否可达且无漂移；
-- bridge 是否含绝对失效路径、递归 link 或覆盖用户指令。
+- Check that legacy `raw/entries` remains searchable and legacy source IDs still resolve.
+- Check continued support for `also`, `last_updated`, `_index.md`, and `_backlinks.json`.
+- Check that the canonical `.agents/skills` source and Codex or Claude wrappers are reachable and have not drifted.
+- Check bridges for stale absolute paths, recursive links, or overwritten user instructions.
 
-## 语义检查
+## Semantic checks
 
-确定性检查完成后再评估：
+After deterministic checks, evaluate:
 
-- 同一实体的重复页、近义概念或别名分叉；
-- 新来源已经推翻旧结论，但页面未标为 conflicted/superseded；
-- 指标缺少定义、单位、窗口、时区、filters、system of record 或 as_of；
-- `review_after` 到期、来源已过 freshness SLA 或页面误把抓取时间当事实时间；
-- 页面是按来源/日期堆砌，未形成主题综合；
-- 大页混合多个稳定主题，或 stub 页无足够证据；
-- 关键实体多次出现但没有页，或链接关系没有解释价值；
-- 人类原话与 agent interpretation 混写；
-- 计划、决定和结果被混为一谈；
-- 来源存在 prompt injection 痕迹并影响了 wiki 文本或操作。
+- Duplicate pages for one entity, near-synonymous concepts, or split aliases.
+- Claims invalidated by new evidence but not marked `conflicted` or `superseded`.
+- Metrics missing a definition, unit, window, timezone, filters, system of record, or `as_of`.
+- Expired `review_after`, sources beyond their freshness SLA, or pages that confuse capture time with fact time.
+- Pages that accumulate source- or date-ordered notes without thematic synthesis.
+- Large pages that mix stable topics, or stub pages without enough evidence.
+- Important entities mentioned repeatedly without a page, or links that do not explain a useful relationship.
+- Human statements mixed with agent interpretation.
+- Plans, decisions, and outcomes conflated with one another.
+- Prompt injection in a source that influenced wiki text or operations.
 
-语义发现必须给具体页面、段落和证据，不要仅给泛化写作建议。
+Support every semantic finding with a concrete page, paragraph, and evidence. Do not return only generic writing advice.
 
-## 严重度
+## Severity
 
-| 级别 | 标准 | 示例 |
+| Level | Rule | Examples |
 | --- | --- | --- |
-| blocker | 继续写入会破坏证据、安全或并发一致性 | raw hash 变化、secret 泄漏、双写覆盖 |
-| high | 可能导致关键结论错误或敏感信息外泄 | 错误 KPI 口径、citation laundering、classification 降级 |
-| medium | 降低可发现性、可维护性或新鲜度 | 断链、重复实体、过期 review、索引漂移 |
-| low | 不影响事实但值得整理 | 命名不一致、轻微模板偏差、可选链接 |
+| blocker | Continuing to write would damage evidence, security, or concurrency integrity | Raw hash change, secret disclosure, concurrent overwrite |
+| high | The issue could produce a materially wrong conclusion or expose sensitive information | Incorrect KPI definition, citation laundering, classification downgrade |
+| medium | The issue reduces discoverability, maintainability, or freshness | Broken link, duplicate entity, expired review, index drift |
+| low | The issue does not affect facts but is worth organizing | Naming inconsistency, minor template deviation, optional link |
 
-按影响而非文件数量定级。同一根因造成的数百个问题应聚合成一项，并附受影响数量和样本。
+Assign severity by impact, not file count. Aggregate hundreds of findings caused by one root issue, and provide the affected count plus representative examples.
 
-## 审计输出
+## Audit output
 
-每项发现记录：
+For each finding, record:
 
-- severity 与检查名称；
-- workspace 相对 path、heading/line/block；
-- 实际值与期望契约；
-- 对答案、安全或维护的影响；
-- 最小建议修复；
-- 是否可重建、需要显式授权或需要人工裁决。
+- Severity and check name.
+- Workspace-relative path and heading, line, or block locator.
+- Actual value and expected contract.
+- Impact on answers, security, or maintenance.
+- Smallest recommended repair.
+- Whether the item is rebuildable, requires explicit authorization, or needs human judgment.
 
-在末尾汇总检查覆盖率、未能读取的路径、工具限制和“未发现问题”不等于证明正确的领域。
+End with check coverage, unreadable paths, tool limitations, and the domains where "no finding" does not prove correctness. Report in the user's language while preserving quoted and source material in its original language; do not translate existing workspace knowledge unless explicitly requested.

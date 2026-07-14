@@ -1,34 +1,34 @@
-# 旧 Workspace 迁移与跨 Agent 发现
+# Legacy Workspace Migration and Cross-Agent Discovery
 
-## 采用兼容优先迁移
+## Prefer compatibility-first migration
 
-先盘点，不先移动：
+Inventory before moving anything:
 
-- workspace root，以及存在时的 `.obsidian/` 可选配置；
-- `data/`、`inbox/`、`notes/` 等 human-authored 路径；
-- 旧 `raw/entries/*.md` 的 frontmatter 与 ID；
-- `wiki/_index.md`、`_backlinks.json` 和页面类型；
-- `also`、`last_updated`、旧 `sources` 与 wikilinks；
-- `.claude/skills`、`.codex/skills`、`.opencode/skills`、`.agents/skills`、`AGENTS.md`、`CLAUDE.md`；
-- git、sync、symlink 和大小写敏感性。
+- the workspace root and optional `.obsidian/` configuration when present;
+- human-authored paths such as `data/`, `inbox/`, and `notes/`;
+- frontmatter and IDs in legacy `raw/entries/*.md`;
+- `wiki/_index.md`, `_backlinks.json`, and page types;
+- `also`, `last_updated`, legacy `sources`, and wikilinks;
+- `.claude/skills`, `.codex/skills`, `.opencode/skills`, `.agents/skills`, `AGENTS.md`, and `CLAUDE.md`;
+- Git, synchronization, symlinks, and case sensitivity.
 
-把现有路径映射进 `.wiki/config.json`。默认保留原位，不强制改成新目录大小写或 taxonomy。
+Map existing paths in `.wiki/config.json`. Preserve them in place by default; do not force new directory casing or taxonomy.
 
-## 兼容旧 personal wiki 契约
+## Preserve the legacy personal-wiki contract
 
-- 把 `data/` 当 human-owned source drop，不改写。
-- 把 `raw/entries/` 当合法 immutable legacy source cards；继续解析其 `id`、`date`、`source_type`、`source_path` 等字段。
-- 把旧 source ID 保持为引用目标；不批量换成 `src-*`。
-- 继续用 `also` 做检索与 link resolution；新页使用 `aliases`。显式迁移时可以双写一段过渡期。
-- 继续读取 `last_updated`；新页使用 `updated`。不要删除旧字段直到所有消费者升级。
-- 保留人工 `wiki/_index.md` 的标题、分类、summary 和注释。CLI 只生成 `_catalog.md`、`_sources.md`、`_backlinks.json`。
-- 读取旧 `_backlinks.json`，但允许由新 CLI 以兼容格式重建；先备份并验证消费者。
+- Treat `data/` as a human-owned source drop and never rewrite it.
+- Treat `raw/entries/` as valid, immutable legacy source cards. Continue parsing fields such as `id`, `date`, `source_type`, and `source_path`.
+- Keep legacy source IDs as citation targets. Do not bulk-convert them to `src-*`.
+- Continue using `also` for retrieval and link resolution; use `aliases` on new pages. During an explicit migration, dual-write both fields for a transition period when needed.
+- Continue reading `last_updated`; use `updated` on new pages. Do not remove legacy fields until every consumer has upgraded.
+- Preserve headings, categories, summaries, and comments in the curated `wiki/_index.md`. Let the CLI generate only `_catalog.md`, `_sources.md`, and `_backlinks.json`.
+- Continue reading legacy `_backlinks.json`. Allow the new CLI to rebuild it in a compatible format only after backing it up and validating consumers.
 
-只有用户明确要求统一 schema 时才批量回填。把 schema migration 与内容修订分成不同 transaction 和 event。
+Backfill fields in bulk only when the user explicitly requests schema unification. Record schema migration and content revision as separate transactions and events.
 
-## Canonical skill 布局
+## Keep one canonical skill layout
 
-保持：
+Maintain:
 
 ```text
 <workspace>/.agents/skills/
@@ -38,56 +38,56 @@
   wiki-configure/
 ```
 
-让 `.agents/skills` 成为唯一可编辑真源。其他客户端使用薄 wrapper 或 symlink 指向 canonical `SKILL.md`，不要复制四套完整内容。
+Treat `.agents/skills` as the only editable source of truth. Point other clients to canonical `SKILL.md` files with thin wrappers or symlinks; do not copy four independent suites.
 
-首选从 workspace 根目录使用 `npx skills` 安装完整套件：
+Prefer installing the complete suite from the workspace root with `npx skills`:
 
 ```text
 npx skills add arronKler/llm-wiki --skill '*' -a universal -a claude-code -y
 ```
 
-保持项目级安装，不使用 `-g`。接受安装器写入的 `skills-lock.json`、`.agents/skills` canonical copy 和 `.claude/skills` directory symlink。四个 skill 通过 sibling 相对路径共享 `wiki-configure/scripts/wiki.py`，因此不得只安装其中一部分。
+Keep installation project-scoped and do not use `-g`. Accept installer-managed `skills-lock.json`, the canonical `.agents/skills` copy, and the `.claude/skills` directory symlink. The four skills share `wiki-configure/scripts/wiki.py` through sibling-relative paths, so never install only part of the suite.
 
-生成 wrapper 时：
+When generating a wrapper:
 
-- 让 frontmatter 的 name/description 足以触发；
-- 让正文只指向 canonical skill 并要求完整读取；
-- 使用相对路径或可重建 link，避免硬编码旧机器绝对路径；
-- 保留用户已有 `.claude/skills`、`.codex/skills`、AGENTS/CLAUDE 指令；
-- 未显式要求时不使用 `--force`。
+- make its frontmatter name and description sufficient for triggering;
+- point its body only to the canonical skill and require complete reading;
+- use relative paths or rebuildable links instead of machine-specific absolute paths;
+- preserve existing `.claude/skills`, `.codex/skills`, `AGENTS.md`, and `CLAUDE.md` instructions;
+- do not use `--force` unless explicitly requested.
 
-## 理解 agent discovery 边界
+## Explain agent discovery boundaries
 
-不同 agent 客户端的发现位置和 symlink 支持不同。不能承诺“文件放入 workspace 后，从任意目录启动的所有 agent 都自动发现”。采用以下保证层级：
+Agent clients differ in discovery paths and symlink support. Never promise that placing files in a workspace makes them automatically discoverable by every agent launched from any directory. Use these guarantee levels:
 
-1. 从 workspace 内以 project/repo 方式启动：使用项目级 `.agents/skills`。
-2. Claude 或只扫描专属目录的客户端：生成 `.claude/skills` 薄 wrapper，或使用其 add-dir/project 机制。
-3. Gemini CLI、OpenCode 与新版 Codex 可直接发现 `.agents/skills`；仅在客户端策略禁用 agent-compatible 路径时，才为 OpenCode 生成可选 `.opencode/skills` 薄 wrapper。
-4. 旧 Codex 配置：在需要时生成 `.codex/skills` bridge；优先迁移到 `.agents/skills`。
-5. 从 workspace 外任意位置启动：显式安装 user-level link/skill，或让客户端把该目录加入 workspace；这属于每个客户端的一次性配置。
-6. 完全不支持 Agent Skills 的 agent：用极短 `AGENTS.md`/`CLAUDE.md` 说明 workspace root、权限边界和四个 canonical skill 路径。
+1. When launched inside the workspace as a project or repository, use project-level `.agents/skills`.
+2. For Claude or clients that scan only dedicated directories, generate thin `.claude/skills` wrappers or use the client's add-directory or project mechanism.
+3. Let Gemini CLI, OpenCode, and current Codex discover `.agents/skills` directly. Generate optional `.opencode/skills` wrappers only when client policy disables agent-compatible paths.
+4. For legacy Codex configuration, generate a `.codex/skills` bridge when needed and prefer migration to `.agents/skills`.
+5. When launching outside the workspace, install an explicit user-level link or skill, or add the directory to the client's workspace. Treat this as one-time client configuration.
+6. For agents without Agent Skills support, add a very short `AGENTS.md` or `CLAUDE.md` that states the workspace root, permission boundaries, and four canonical skill paths.
 
-不要让 bridge 自己包含完整知识契约，否则升级时会漂移。
+Do not embed the complete knowledge contract in a bridge; it will drift during upgrades.
 
-## 移动 workspace
+## Move a workspace
 
-移动后重新运行 `locate`、`install-bridges` 和 `doctor`。检查：
+After moving, rerun `locate`, `install-bridges`, and `doctor`. Check:
 
-- symlink target 与 wrapper relative path；
-- `.wiki/config.json` 是否使用 workspace-relative paths；
-- adapter 是否残留绝对路径；
-- Obsidian attachments 和 wikilinks；
-- git submodule/sync 忽略规则；
-- user-level link 是否仍指向旧位置。
+- symlink targets and wrapper-relative paths;
+- workspace-relative paths in `.wiki/config.json`;
+- absolute paths left in adapters;
+- Obsidian attachments and wikilinks;
+- Git submodule and synchronization ignore rules;
+- user-level links that may still target the old location.
 
-不要通过全局搜索替换 raw source 内的原始路径；raw 是证据。只更新配置、derived mappings 和 bridges。
+Do not globally replace original paths inside raw sources. Raw content is evidence. Update only configuration, derived mappings, and bridges.
 
-## 升级与回滚
+## Upgrade and roll back
 
-1. 记录当前 skill/version、config、schema、policy 和 bridge hash。
-2. 只升级 canonical skills 与兼容的 CLI/assets。
-3. 不在同一 transaction 中批量改写 wiki 内容。
-4. 重新生成 wrappers，运行 `doctor`、`lint` 和 legacy fixture。
-5. 失败时恢复 canonical/config/bridge，不回滚或重写新捕获的 raw sources。
+1. Record the current skill and version, config, schema, policy, and bridge hashes.
+2. Upgrade only canonical skills and compatible CLI or assets.
+3. Do not bulk-rewrite wiki content in the same transaction.
+4. Regenerate wrappers, then run `doctor`, `lint`, and the legacy fixture.
+5. On failure, restore canonical skills, config, and bridges. Do not roll back or rewrite newly captured raw sources.
 
-验收至少覆盖：从 workspace 内分别触发 ingest/query/maintain/configure；旧 source 与 aliases 可查；bridge 不覆盖已有指令；从 workspace 外启动时能给出明确安装提示而非静默失败。
+At minimum, verify that ingest, query, maintain, and configure trigger from inside the workspace; legacy sources and aliases remain searchable; bridges preserve existing instructions; and launching outside the workspace produces a clear installation prompt rather than silent failure.

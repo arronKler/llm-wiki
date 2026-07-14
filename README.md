@@ -21,6 +21,7 @@ All runtime files are installed inside the workspace. User notes, source evidenc
 - **Traceable claims.** Important conclusions in the wiki point back to source IDs and precise locations, so answers can be checked instead of merely trusted.
 - **Clear ownership.** Human notes remain human-owned, source evidence stays append-only, and agents maintain only the explicitly managed wiki areas.
 - **Focused workflows.** Configuration, ingestion, querying, and maintenance are separate Skills, so agents activate only the workflow needed for the current task.
+- **Language-adaptive by default.** The Skills use English as their portable instruction language. Replies follow the user, while new persistent knowledge follows the workspace language and falls back to the user's language when none is established.
 - **Safe, incremental change.** Setup preserves existing files, generated indexes are rebuildable, and write operations use validation, audit events, and rollback boundaries.
 
 The resulting knowledge flow is:

@@ -1,23 +1,23 @@
-# Wiki 整合契约
+# Wiki Integration Contract
 
-## 先匹配再创建
+## Match Before Creating
 
-依次检查：
+Check in this order:
 
-1. 人工维护的 `wiki/_index.md`；
-2. 生成的 `_catalog.md`、`_sources.md`、`_backlinks.json`；
-3. title、`aliases`、旧 `also`、properties 与正文搜索；
-4. 相关页面的一到两跳 wikilinks/backlinks。
+1. Human-maintained `wiki/_index.md`.
+2. Generated `_catalog.md`, `_sources.md`, and `_backlinks.json`.
+3. Title, `aliases`, legacy `also`, properties, and full-text search.
+4. One or two hops of wikilinks and backlinks from relevant pages.
 
-把同一实体的别名并入现有页。仅在主题是 durable link target、跨来源重复出现、对一个来源非常核心或能写出至少一个有证据的完整段落时创建新页。不要为一处顺带提及建立空 stub。
+Merge aliases for the same entity into an existing page. Add an alias only when it appears in evidence, is already established in the workspace, or is explicitly requested. Never invent translated or transliterated names. Create a page only when the topic is a durable link target, recurs across sources, is central to one source, or supports at least one complete evidence-backed paragraph. Do not create an empty stub for a passing mention.
 
-## 使用标准 Markdown Properties
+## Use Standard Markdown Properties
 
-新知识页至少使用 `title`、`type`、`created`、`updated` 和 `sources`，并按需使用完整 schema：
+Give every new knowledge page at least `title`, `type`, `created`, `updated`, and `sources`. Use the rest of the schema as needed:
 
 ```yaml
 ---
-title: 页面标题
+title: Page title
 aliases: [Alternate name]
 type: concept
 domains: [work]
@@ -32,66 +32,67 @@ sources: [src-web-0123456789ab]
 ---
 ```
 
-采用 schema 中定义的 controlled values。YAML frontmatter 是通用契约，并同时兼容 Obsidian Properties。让文件名尽量使用稳定的 lowercase kebab-case，让中文或多语言名称放在 `title` 和 `aliases`。让 `[[wikilinks]]` 通过 title/aliases 解析。
+Use controlled values defined by the schema. Treat YAML frontmatter as the portable contract and keep it compatible with Obsidian Properties. Prefer stable lowercase kebab-case filenames. Put Chinese or other multilingual names in `title` and `aliases`. Resolve `[[wikilinks]]` through titles and aliases.
 
-遇到旧页时：
+When updating a legacy page:
 
-- 保留 `also` 并把它用于别名匹配；除非显式迁移，不删除或批量改写它；
-- 保留 `last_updated`；更新页面时可同时增加/更新现代 `updated`，不得令旧消费者失效；
-- 保留旧 source ID，例如 `text-b185a6a06928`；不要只为格式统一而换 ID；
-- 保留人工 `_index.md` 的组织、摘要和注释，只增量更新受影响条目。
+- Preserve `also` and use it for alias matching. Do not delete or bulk-rewrite it without an explicit migration.
+- Preserve `last_updated`. When editing the page, add or update modern `updated` without breaking legacy consumers.
+- Preserve legacy source IDs such as `text-b185a6a06928`; do not replace them merely to standardize the format.
+- Preserve the organization, summaries, and annotations in the human-maintained `_index.md`. Update only affected entries.
 
-## 按主张引用原始证据
+## Cite Raw Evidence at Claim Level
 
-让事实、数字、决定、个人陈述和时间敏感结论直接追到 raw source ID：
+Trace facts, numbers, decisions, personal statements, and time-sensitive conclusions directly to a raw source ID:
 
 ```markdown
-支付转化率在 2026-06-30 为 18.4%。[^src-report-a1b2-p12] ^claim-7f3a
+Payment conversion was 18.4% on 2026-06-30.[^src-report-a1b2-p12] ^claim-7f3a
 
-[^src-report-a1b2-p12]: `src-report-a1b2`，第 12 页，快照于 2026-07-14。
+[^src-report-a1b2-p12]: `src-report-a1b2`, page 12, snapshot captured on 2026-07-14.
 ```
 
-在一段共享同一证据时可做 paragraph-level citation；同段包含多个独立主张时分别引用。让 frontmatter `sources` 收齐正文实际使用的 source IDs。
+Use a paragraph-level citation when one source supports the whole paragraph. Cite independent claims separately when they share a paragraph. Include every source ID used in the body in frontmatter `sources`.
 
-不得只引用另一篇 agent-generated wiki 页或 output。Wiki link 用于导航，raw citation 用于证明。引用 derived OCR/转写时仍指向 raw source，并补充 derived locator。
+Do not cite only another agent-generated wiki page or output. Use wiki links for navigation and raw citations for evidence. When citing derived OCR or a transcript, still point to the raw source and add the derived locator.
 
-短引原文只用于保留准确措辞或个人声音。明确标注说话者和上下文，不把 agent 改写冒充用户原话。
+Quote source text briefly only to preserve exact wording or a person's voice. Identify the speaker and context; never present an agent paraphrase as the user's exact words.
 
-## 综合而不是追加
+## Synthesize Instead of Appending
 
-- 编辑前立即重读整页，把新证据放入最合适的主题段落。
-- 让页面先给定义或结论，再写演变、关系、冲突与开放问题。
-- 用具体日期、单位、owner、范围和归因替代“最近”“很多”“大家认为”等模糊词。
-- 更新相关页的 wikilinks；只建立有解释价值的关系，不堆砌“相关链接”。
-- 第三个独立子主题出现时考虑拆页；页面过薄时优先丰富而非继续拆分。
-- 保持人类陈述、来源陈述和 agent interpretation 可区分。
+- Reread the full page immediately before editing and place new evidence in the most relevant thematic section.
+- Lead with the definition or conclusion, then cover change over time, relationships, conflicts, and open questions.
+- Replace vague phrases such as "recently," "many," or "people think" with concrete dates, units, owners, scope, and attribution.
+- Update wikilinks on related pages. Create only relationships that add explanatory value; do not accumulate a generic related-links list.
+- Consider splitting a page when a third independent subtopic appears. Enrich a thin page before splitting it further.
+- Keep human statements, source statements, and agent interpretations distinguishable.
+- Answer in the user's language. Preserve an existing target page's language. For a new page, honor an explicit workspace language; with `auto`, use the established language of non-generated knowledge and otherwise the user's language. Do not treat system scaffolds, property names, or generated indexes as language evidence. Never translate existing knowledge without an explicit request.
 
-## 保留冲突与时间
+## Preserve Conflicts and Time
 
-新证据与旧主张不一致时：
+When new evidence disagrees with an existing claim:
 
-1. 保留双方文本、source ID、locator、published/captured/as-of 时间；
-2. 检查是否只是定义、时间窗口、范围或粒度不同；
-3. 将页面标为 `conflicted` 或加入显眼的冲突段落；
-4. 仅依据 policy 中的 authority、明确的生效时间或用户裁决选择当前结论；
-5. 把被替代内容标为 superseded，而不是删除历史证据。
+1. Preserve both statements, their source IDs, locators, and published, captured, or as-of times.
+2. Check whether the difference comes from definitions, time windows, scope, or granularity.
+3. Mark the page `conflicted` or add a prominent conflict section.
+4. Select the current conclusion only from policy-defined authority, an explicit effective time, or a user decision.
+5. Mark displaced content as superseded instead of deleting historical evidence.
 
-指标必须写明定义、单位、窗口、时区、filters、system of record 与 `as_of`。决定必须区分背景、选项、证据、选择、owner、日期、理由与后续结果。
+For a metric, record its definition, unit, window, timezone, filters, system of record, and `as_of`. For a decision, distinguish context, options, evidence, choice, owner, date, rationale, and later outcome.
 
-## 维护索引与可选前端视图
+## Maintain Indexes and Optional Frontend Views
 
-- 把 `_index.md` 当作人工可编辑的内容导航；增量编辑，不由 `rebuild` 覆盖。
-- 把 `_catalog.md`、`_sources.md`、`_backlinks.json` 当作可删除重建的 state。
-- 检测到 Obsidian workspace 时，让可选 `Wiki.base` 和 Properties 使用标准 YAML 字段。Bases/Dataview 只是视图，不作为知识正确性的依赖。
-- 用 heading 或 block anchor 为重要 claim 提供稳定内部链接。
+- Treat `_index.md` as human-editable content navigation. Update it incrementally; never let `rebuild` overwrite it.
+- Treat `_catalog.md`, `_sources.md`, and `_backlinks.json` as disposable, rebuildable state.
+- When an Obsidian workspace is detected, use standard YAML fields for optional `Wiki.base` and Properties. Treat Bases and Dataview as views, never as correctness dependencies.
+- Give important claims stable internal links with heading or block anchors.
 
-## 提交前检查
+## Pre-Commit Checks
 
-- 每个新页是否有来源且不是 stub；
-- 每个 material claim 是否能到 raw；
-- `sources`、aliases、状态、日期与敏感度是否一致；
-- 冲突与不确定性是否可见；
-- 人工 `_index.md` 是否保留；
-- generated files 是否只由 rebuild 生成；
-- 旧 `also`、`last_updated`、source IDs 是否仍可读；
-- lint 是否无本次新增错误。
+- Verify that every new page has a source and is not a stub.
+- Verify that every material claim traces to raw evidence.
+- Verify that `sources`, aliases, status, dates, and classification agree.
+- Keep conflicts and uncertainty visible.
+- Preserve the human-maintained `_index.md`.
+- Generate derived files only through `rebuild`.
+- Keep legacy `also`, `last_updated`, and source IDs readable.
+- Ensure `lint` reports no errors introduced by this ingest.

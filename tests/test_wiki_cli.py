@@ -17,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = REPO_ROOT / "skills"
 CLI_SOURCE = SKILLS_ROOT / "wiki-configure" / "scripts" / "wiki.py"
 SUITE_NAMES = ("wiki-configure", "wiki-ingest", "wiki-maintain", "wiki-query")
+HAN_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 
 
 def load_wiki_module():
@@ -53,6 +54,21 @@ class RepositoryLayoutTests(unittest.TestCase):
                     continue
                 path = (markdown.parent / target.split("#", 1)[0]).resolve()
                 self.assertTrue(path.exists(), f"Broken local link in {markdown}: {target}")
+
+    def test_canonical_instructions_are_english_with_chinese_triggers(self) -> None:
+        for name in SUITE_NAMES:
+            skill_file = SKILLS_ROOT / name / "SKILL.md"
+            metadata, body = WIKI.parse_frontmatter(skill_file.read_text(encoding="utf-8"))
+            description = str(metadata["description"])
+            self.assertIn("Chinese triggers", description, name)
+            self.assertRegex(description, HAN_RE, name)
+            self.assertNotRegex(body, HAN_RE, name)
+
+        text_suffixes = {".md", ".base", ".yaml", ".yml", ".json", ".txt"}
+        for directory in ("references", "assets"):
+            for path in SKILLS_ROOT.glob(f"*/{directory}/*"):
+                if path.is_file() and path.suffix.lower() in text_suffixes:
+                    self.assertNotRegex(path.read_text(encoding="utf-8"), HAN_RE, str(path))
 
     def test_release_contains_no_machine_specific_paths(self) -> None:
         forbidden = ("/Users/", "\\Users\\", "/home/")
@@ -130,7 +146,8 @@ class WikiCliTests(unittest.TestCase):
         initialized_payload = json.loads(initialized.stdout)
         self.assertEqual(Path(initialized_payload["workspace"]).resolve(), workspace.resolve())
         self.assertEqual(Path(initialized_payload["vault"]).resolve(), workspace.resolve())
-        self.assertTrue((workspace / ".wiki" / "config.json").is_file())
+        config = json.loads((workspace / ".wiki" / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["language"], "auto")
         self.assertFalse((workspace / ".obsidian").exists())
         self.assertFalse((workspace / "wiki" / "Wiki.base").exists())
 
@@ -153,6 +170,27 @@ class WikiCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr.decode())
         self.assertIn(b"missing-config", result.stdout)
         self.assertNotIn(b"Could not locate", result.stderr)
+
+    def test_init_preserves_an_explicit_workspace_language(self) -> None:
+        config = copy.deepcopy(WIKI.DEFAULT_CONFIG)
+        config["language"] = "zh-CN"
+        self.write_config(config)
+
+        self.init()
+
+        persisted = json.loads((self.vault / ".wiki" / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(persisted["language"], "zh-CN")
+
+    def test_invalid_workspace_language_is_rejected_before_init_writes(self) -> None:
+        config = copy.deepcopy(WIKI.DEFAULT_CONFIG)
+        config["language"] = "Chinese (Simplified)"
+        self.write_config(config)
+
+        result = self.run_cli("init")
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"BCP 47-style language tag", result.stderr)
+        self.assertFalse((self.vault / "wiki").exists())
 
     def test_config_path_escape_is_rejected_before_init_writes(self) -> None:
         config = copy.deepcopy(WIKI.DEFAULT_CONFIG)
