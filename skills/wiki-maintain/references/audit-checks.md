@@ -10,12 +10,12 @@
 - raw source 是否缺少 metadata/hash，记录哈希与实际字节是否一致；
 - 同一 source ID 是否指向不同内容；
 - derived 是否能追到 raw，output 是否被当成 primary evidence；
-- `.obsidian/`、policy、schema 或 adapter 是否出现未记录修改。
+- 可选 `.obsidian/`、policy、schema 或 adapter 是否出现未记录修改。
 
 ### Schema 与身份
 
 - 新页是否具有 `title`、`type`、`created`、`updated`、`sources`；
-- 日期、list、controlled value 和 YAML 是否能被 Obsidian Properties/Bases 解析；
+- 日期、list、controlled value 和 YAML 是否符合通用 frontmatter，并在启用 Obsidian 时能被 Properties/Bases 解析；
 - title、aliases、旧 `also` 是否重复或冲突；
 - filename、title 与 wikilink target 是否稳定；
 - source ID、claim/block ID 是否唯一。
@@ -26,7 +26,7 @@
 - orphan pages、无入链的关键实体、高入链但不存在的目标；
 - `_catalog.md`、`_sources.md`、`_backlinks.json` 是否落后；
 - 人工 `_index.md` 是否被生成器覆盖或遗漏重要页；
-- `Wiki.base` 是否排除系统/生成页并使用现有 properties。
+- 若启用 Obsidian，`Wiki.base` 是否排除系统/生成页并使用现有 properties。
 
 ### 引用与敏感度
 
@@ -35,7 +35,7 @@
 - 是否只引用另一篇 generated wiki/output，形成 citation laundering；
 - 页面和 output 是否继承最高输入 classification；
 - public output 是否引用 non-public 内容；
-- 是否把 credential、token、cookie、私钥写入 vault。
+- 是否把 credential、token、cookie、私钥写入 workspace。
 
 ### 兼容与桥接
 
@@ -77,7 +77,7 @@
 每项发现记录：
 
 - severity 与检查名称；
-- vault 相对 path、heading/line/block；
+- workspace 相对 path、heading/line/block；
 - 实际值与期望契约；
 - 对答案、安全或维护的影响；
 - 最小建议修复；

@@ -14,7 +14,7 @@ sources: []
 
 # {{title}}
 
-Lead with a concise definition or answer grounded in this vault.
+Lead with a concise definition or answer grounded in this wiki.
 
 ## Current understanding
 

@@ -11,7 +11,7 @@
 
 把同一实体的别名并入现有页。仅在主题是 durable link target、跨来源重复出现、对一个来源非常核心或能写出至少一个有证据的完整段落时创建新页。不要为一处顺带提及建立空 stub。
 
-## 使用 Obsidian-compatible Properties
+## 使用标准 Markdown Properties
 
 新知识页至少使用 `title`、`type`、`created`、`updated` 和 `sources`，并按需使用完整 schema：
 
@@ -32,7 +32,7 @@ sources: [src-web-0123456789ab]
 ---
 ```
 
-采用 schema 中定义的 controlled values。让文件名尽量使用稳定的 lowercase kebab-case，让中文或多语言名称放在 `title` 和 `aliases`。让 `[[wikilinks]]` 通过 title/aliases 解析。
+采用 schema 中定义的 controlled values。YAML frontmatter 是通用契约，并同时兼容 Obsidian Properties。让文件名尽量使用稳定的 lowercase kebab-case，让中文或多语言名称放在 `title` 和 `aliases`。让 `[[wikilinks]]` 通过 title/aliases 解析。
 
 遇到旧页时：
 
@@ -78,11 +78,11 @@ sources: [src-web-0123456789ab]
 
 指标必须写明定义、单位、窗口、时区、filters、system of record 与 `as_of`。决定必须区分背景、选项、证据、选择、owner、日期、理由与后续结果。
 
-## 维护索引与 Obsidian 视图
+## 维护索引与可选前端视图
 
 - 把 `_index.md` 当作人工可编辑的内容导航；增量编辑，不由 `rebuild` 覆盖。
 - 把 `_catalog.md`、`_sources.md`、`_backlinks.json` 当作可删除重建的 state。
-- 让 `Wiki.base` 和 Obsidian Properties 使用标准 YAML 字段。Bases/Dataview 只是视图，不作为知识正确性的依赖。
+- 检测到 Obsidian workspace 时，让可选 `Wiki.base` 和 Properties 使用标准 YAML 字段。Bases/Dataview 只是视图，不作为知识正确性的依赖。
 - 用 heading 或 block anchor 为重要 claim 提供稳定内部链接。
 
 ## 提交前检查

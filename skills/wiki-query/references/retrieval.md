@@ -23,7 +23,7 @@
 6. 目标页正文：优先读取 5–15 页，覆盖不同证据链和反例。
 7. raw 片段：只为精确核验、引用、冲突或证据请求读取。
 
-旧 vault 中缺少生成 catalog 时，使用 `_index.md`、`_backlinks.json`、`rg` 和 frontmatter `also`。不要要求迁移后才回答。
+旧 workspace 中缺少生成 catalog 时，使用 `_index.md`、`_backlinks.json`、`rg` 和 frontmatter `also`。不要要求迁移后才回答。
 
 ## 按问题类型选页面
 
@@ -46,7 +46,7 @@
 
 - 业务事实的 `as_of`；
 - 来源的 published/effective time；
-- vault 的 captured time；
+- workspace 的 captured time；
 - 页面的 `updated`；
 - policy 定义的 `review_after` 或 freshness SLA。
 

@@ -59,7 +59,7 @@ Adapter 只负责取得和描述证据。最终 raw identity 统一交给 `wiki.
 
 ## 认证与最小权限
 
-只从当前 agent 的批准 connector、环境变量、系统 keychain 或企业 secret manager 获取认证。禁止把 API key、token、cookie、password、private key 或完整 connection string 写入 vault、event 或错误日志。
+只从当前 agent 的批准 connector、环境变量、系统 keychain 或企业 secret manager 获取认证。禁止把 API key、token、cookie、password、private key 或完整 connection string 写入 workspace、event 或错误日志。
 
 优先使用 read-only scope、最小对象范围和短期凭据。配置阶段只 probe 一份小样本。需要修改外部系统、发送消息或启动同步任务时，必须得到该外部副作用的独立授权。
 
@@ -72,7 +72,7 @@ Adapter 只负责取得和描述证据。最终 raw identity 统一交给 `wiki.
 - 不在公共查询中拼入原文或私有实体组合；
 - 只有用户明确授权具体数据、具体服务和用途后才外发。
 
-Classification 是工作流护栏，不是访问控制。不同法律、公司和个人 trust zone 使用不同 vault、repo、OS 权限和 connector identity。
+Classification 是工作流护栏，不是访问控制。不同法律、公司和个人 trust zone 使用不同 workspace、repo、OS 权限和 connector identity。
 
 ## 来源不可信
 

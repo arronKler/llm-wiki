@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Deterministic utilities for an agent-maintained Obsidian wiki.
+"""Deterministic utilities for an agent-maintained local Markdown wiki.
 
 The Markdown wiki remains authoritative. This CLI only captures immutable
 evidence, builds disposable navigation state, and performs structural checks.
-It deliberately uses only the Python standard library.
+It deliberately uses only the Python standard library. Obsidian integration
+is optional and is enabled only when an Obsidian workspace is detected.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ HEADING_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 URL_RE = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
 GENERATED_NAMES = {"_catalog.md", "_sources.md", "_backlinks.json", "_lint.md"}
 GENERATED_MARKER = "<!-- generated-by: llm-wiki; safe-to-rebuild -->"
+BRIDGE_MARKERS = ("generated-by: llm-wiki", "generated-by: managed-obsidian-wiki")
 DEFAULT_CONFIG: dict[str, Any] = {
     "schema_version": 1,
     "language": "zh-CN",
@@ -159,12 +161,15 @@ def find_vault(start: Path | str | None = None) -> Path:
             seen.add(parent)
             if (parent / ".wiki" / "config.json").is_file() or (parent / ".obsidian").is_dir():
                 return parent
-    raise WikiError("Could not locate a vault. Pass --vault <vault-root>.")
+    raise WikiError("Could not locate a managed wiki workspace. Pass --workspace <workspace-root> or --vault <workspace-root>.")
 
 
-def resolve_vault(args: argparse.Namespace, *, allow_uninitialized: bool = False) -> Path:
+def resolve_vault(args: argparse.Namespace) -> Path:
     explicit = getattr(args, "path", None) or getattr(args, "vault", None)
-    if explicit and allow_uninitialized:
+    if explicit:
+        # An explicit root is authoritative even before initialization. This
+        # makes plain directories first-class workspaces; discovery markers
+        # are only needed when no root was supplied.
         return Path(explicit).expanduser().resolve()
     return find_vault(explicit)
 
@@ -193,28 +198,28 @@ def load_config(root: Path, *, required: bool = False) -> dict[str, Any]:
 
 
 def vault_path(root: Path, value: str | os.PathLike[str], *, label: str = "path") -> Path:
-    """Resolve a configured/metadata path and guarantee it stays in the vault."""
+    """Resolve a configured/metadata path and keep it in the workspace."""
     path = Path(value)
     if path.is_absolute():
-        raise WikiError(f"{label} must be vault-relative: {path}")
+        raise WikiError(f"{label} must be workspace-relative: {path}")
     root_resolved = root.resolve()
     candidate = (root_resolved / path).resolve(strict=False)
     try:
         candidate.relative_to(root_resolved)
     except ValueError as exc:
-        raise WikiError(f"{label} escapes the vault: {path}") from exc
+        raise WikiError(f"{label} escapes the workspace: {path}") from exc
     return candidate
 
 
 def vault_entry(root: Path, value: str | os.PathLike[str], *, label: str = "path") -> Path:
-    """Return a lexical vault entry without following its final symlink.
+    """Return a lexical workspace entry without following its final symlink.
 
     Use this only when inspecting a bridge symlink itself. Normal reads and all
     writes must use vault_path(), which follows links for containment checks.
     """
     path = Path(value)
     if path.is_absolute() or ".." in path.parts:
-        raise WikiError(f"{label} must be vault-relative and cannot contain '..': {path}")
+        raise WikiError(f"{label} must be workspace-relative and cannot contain '..': {path}")
     return root.resolve() / path
 
 
@@ -229,7 +234,7 @@ def validate_config(root: Path, config: dict[str, Any]) -> None:
         raise WikiError("Configuration paths must be a JSON object.")
     human_owned = paths.get("human_owned")
     if not isinstance(human_owned, list) or not all(isinstance(value, str) and value.strip() for value in human_owned):
-        raise WikiError("Configured path paths.human_owned must be a list of non-empty vault-relative strings.")
+        raise WikiError("Configured path paths.human_owned must be a list of non-empty workspace-relative strings.")
     for value in human_owned:
         vault_path(root, value, label="Configured human-owned path")
     for name, value in paths.items():
@@ -249,12 +254,12 @@ def validate_config(root: Path, config: dict[str, Any]) -> None:
 
     patterns = config.get("capture_exclude")
     if not isinstance(patterns, list) or not all(isinstance(pattern, str) and pattern.strip() for pattern in patterns):
-        raise WikiError("capture_exclude must be a list of non-empty vault-relative glob strings.")
+        raise WikiError("capture_exclude must be a list of non-empty workspace-relative glob strings.")
     for pattern in patterns:
         path = Path(pattern)
         posix = PurePosixPath(pattern)
         if path.is_absolute() or ".." in path.parts or ".." in posix.parts:
-            raise WikiError(f"capture_exclude patterns must be vault-relative and cannot contain '..': {pattern}")
+            raise WikiError(f"capture_exclude patterns must be workspace-relative and cannot contain '..': {pattern}")
 
     defaults = config.get("defaults")
     if not isinstance(defaults, dict):
@@ -583,7 +588,7 @@ def render_source_card(metadata: dict[str, Any]) -> str:
         original_path = str(metadata["original_path"])
         fields.extend(["", "## Original", "", f"[[{original_path}|{Path(original_path).name}]]"])
     else:
-        fields.extend(["", "Pointer-only record. The original content is not stored in this vault."])
+        fields.extend(["", "Pointer-only record. The original content is not stored in this workspace."])
     return "\n".join(fields) + "\n"
 
 
@@ -795,7 +800,7 @@ def excluded_from_capture(path: Path, root: Path, config: dict[str, Any]) -> boo
             continue
     files = config.get("files", {})
     if not isinstance(files, dict):
-        raise WikiError("files must be an object of vault-relative paths.")
+        raise WikiError("files must be an object of workspace-relative paths.")
     for name in files:
         if resolved == rel_path(root, config, "files", name).resolve(strict=False):
             return True
@@ -803,7 +808,7 @@ def excluded_from_capture(path: Path, root: Path, config: dict[str, Any]) -> boo
 
 
 def command_init(args: argparse.Namespace) -> int:
-    root = resolve_vault(args, allow_uninitialized=True)
+    root = resolve_vault(args)
     root.mkdir(parents=True, exist_ok=True)
     config = load_config(root)
     created: list[str] = []
@@ -813,7 +818,7 @@ def command_init(args: argparse.Namespace) -> int:
         path.mkdir(parents=True, exist_ok=True)
     human_owned = config["paths"].get("human_owned")
     if not isinstance(human_owned, list) or not all(isinstance(value, str) for value in human_owned):
-        raise WikiError("Configured path paths.human_owned must be a list of vault-relative strings.")
+        raise WikiError("Configured path paths.human_owned must be a list of workspace-relative strings.")
     for value in human_owned:
         vault_path(root, value, label="Configured human-owned path").mkdir(parents=True, exist_ok=True)
     with vault_lock(root, config):
@@ -824,13 +829,14 @@ def command_init(args: argparse.Namespace) -> int:
         templates = [
             (rel_path(root, config, "files", "policy"), read_asset("policy-template.md", "# Wiki policy\n")),
             (rel_path(root, config, "files", "schema"), read_asset("schema-template.md", "# Wiki schema\n").replace("{{date}}", today())),
-            (rel_path(root, config, "files", "base"), read_asset("Wiki.base", "")),
             (vault_path(root, ".wiki/templates/page.md", label="Managed template path"), read_asset("page-template.md", "").replace("{{date}}", today())),
             (vault_path(root, ".wiki/templates/query-output.md", label="Managed template path"), read_asset("query-output-template.md", "").replace("{{date}}", today())),
             (vault_path(root, ".wiki/version", label="Managed version path"), "1\n"),
-            (root / "AGENTS.md", read_asset("AGENTS-template.md", "# Managed Obsidian wiki\n")),
-            (root / "CLAUDE.md", read_asset("CLAUDE-template.md", "# Managed Obsidian wiki\n")),
+            (root / "AGENTS.md", read_asset("AGENTS-template.md", "# Managed LLM wiki\n")),
+            (root / "CLAUDE.md", read_asset("CLAUDE-template.md", "# Managed LLM wiki\n")),
         ]
+        if (root / ".obsidian").is_dir():
+            templates.insert(2, (rel_path(root, config, "files", "base"), read_asset("Wiki.base", "")))
         index = rel_path(root, config, "files", "index")
         templates.append((index, f"---\ntitle: Wiki Index\nlast_updated: {today()}\n---\n\n# Wiki Index\n\n> Curated map of contents. Generated catalogs do not overwrite this file.\n"))
         for path, content in templates:
@@ -840,14 +846,14 @@ def command_init(args: argparse.Namespace) -> int:
                 preserved.append(path.relative_to(root).as_posix())
         bridge_result = install_bridges(root, config, {"agents", "claude"}, force=False)
         event = create_event(root, config, "configure", "Initialized managed wiki structure", {"created": created, "bridges": bridge_result})
-    output = {"vault": str(root), "created": created, "preserved": preserved, "bridges": bridge_result, "event": event.relative_to(root).as_posix()}
+    output = {"workspace": str(root), "vault": str(root), "created": created, "preserved": preserved, "bridges": bridge_result, "event": event.relative_to(root).as_posix()}
     print(json_dump(output) if args.json else json.dumps(output, ensure_ascii=False, indent=2))
     return 0
 
 
 def command_locate(args: argparse.Namespace) -> int:
     root = resolve_vault(args)
-    payload = {"vault": str(root), "configured": config_path(root).exists(), "obsidian": (root / ".obsidian").is_dir()}
+    payload = {"workspace": str(root), "vault": str(root), "configured": config_path(root).exists(), "obsidian": (root / ".obsidian").is_dir()}
     print(json_dump(payload) if args.json else str(root))
     return 0
 
@@ -1017,7 +1023,7 @@ def command_capture(args: argparse.Namespace) -> int:
                 raise WikiError(f"Capture failed and rollback was incomplete: {exc}; {detail}") from exc
             raise
     events = [path.relative_to(root).as_posix() for path in event_paths]
-    payload = {"vault": str(root), "sources": results, "events": events, "event": events[-1]}
+    payload = {"workspace": str(root), "vault": str(root), "sources": results, "events": events, "event": events[-1]}
     print(json_dump(payload) if args.json else json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -1036,6 +1042,7 @@ def command_status(args: argparse.Namespace) -> int:
     all_ids = set(new_sources) | set(legacy_sources)
     events = rel_path(root, config, "paths", "events")
     payload = {
+        "workspace": str(root),
         "vault": str(root),
         "configured": config_path(root).exists(),
         "pages": len(pages),
@@ -1125,7 +1132,10 @@ def lint_findings(root: Path, config: dict[str, Any]) -> list[dict[str, str]]:
 
     if not config_path(root).exists():
         add("high", "missing-config", ".wiki/config.json", "Run wiki-configure init before writes.")
-    for group, name in (("files", "policy"), ("files", "schema"), ("files", "base")):
+    expected_files = [("files", "policy"), ("files", "schema")]
+    if (root / ".obsidian").is_dir():
+        expected_files.append(("files", "base"))
+    for group, name in expected_files:
         path = rel_path(root, config, group, name)
         if not path.exists():
             add("medium", f"missing-{name}", path.relative_to(root).as_posix(), "Expected managed-wiki system file is missing.")
@@ -1210,7 +1220,7 @@ def lint_findings(root: Path, config: dict[str, Any]) -> list[dict[str, str]]:
         if "updated" not in page.metadata and "last_updated" not in page.metadata:
             add("medium", "missing-updated", relative, "Use updated, or preserve legacy last_updated.")
         if page.legacy_aliases and not page.aliases:
-            add("medium", "legacy-aliases-only", relative, "Legacy also exists without Obsidian-native aliases; alternate-title links may not resolve.")
+            add("medium", "legacy-aliases-only", relative, "Legacy also exists without standard aliases; alternate-title links may not resolve portably.")
         for source_id in as_list(page.metadata.get("sources")):
             if source_id and source_id not in registry:
                 add("high", "unknown-source", relative, f"Unknown source ID: {source_id}")
@@ -1233,7 +1243,7 @@ def lint_findings(root: Path, config: dict[str, Any]) -> list[dict[str, str]]:
                 if destination.path != page.path:
                     inbound[destination.path] += 1
             if not resolve_link(native, target):
-                add("medium", "obsidian-unresolved-link", relative, f"[[{target}]] resolves only through title/legacy also; add a standard alias or use the filename.")
+                add("medium", "legacy-alias-link", relative, f"[[{target}]] resolves only through title/legacy also; add a standard alias or use the filename.")
         wiki = rel_path(root, config, "paths", "wiki")
         rel_no_ext = page.path.relative_to(wiki).with_suffix("").as_posix()
         if index.exists() and not any(token in index_text for token in (page.relative, rel_no_ext, f"[[{page.title}", f"[[{page.path.stem}")):
@@ -1265,7 +1275,7 @@ def command_lint(args: argparse.Namespace) -> int:
     config = load_config(root)
     findings = lint_findings(root, config)
     counts = Counter(item["severity"] for item in findings)
-    payload = {"vault": str(root), "counts": dict(counts), "findings": findings}
+    payload = {"workspace": str(root), "vault": str(root), "counts": dict(counts), "findings": findings}
     if args.json:
         print(json_dump(payload))
     elif not findings:
@@ -1429,6 +1439,10 @@ def bridge_resolves_to_canonical(bridge: Path, canonical: Path) -> bool:
         return False
 
 
+def is_generated_bridge(content: str) -> bool:
+    return any(marker in content for marker in BRIDGE_MARKERS)
+
+
 def wrapper_content(root: Path, target_root: Path, name: str) -> str:
     canonical = vault_path(root, f".agents/skills/{name}/SKILL.md", label="Canonical skill path")
     metadata = read_skill_frontmatter(canonical)
@@ -1443,7 +1457,7 @@ def wrapper_content(root: Path, target_root: Path, name: str) -> str:
         description: {metadata['description']}
         ---
 
-        <!-- generated-by: managed-obsidian-wiki -->
+        <!-- generated-by: llm-wiki -->
         Read and follow the canonical skill at [{relative}]({relative}) completely before acting.
         Resolve every linked reference, script, and asset relative to the canonical skill directory.
         Do not treat this compatibility wrapper as an independent copy of the workflow.
@@ -1499,7 +1513,7 @@ def install_bridges(root: Path, config: dict[str, Any], targets: set[str], *, fo
             content = wrapper_content(root, base, name)
             if path.exists():
                 existing = path.read_text(encoding="utf-8", errors="replace")
-                generated = "generated-by: managed-obsidian-wiki" in existing
+                generated = is_generated_bridge(existing)
                 if existing == content:
                     result["preserved"].append(path.relative_to(root).as_posix())
                 elif force and generated:
@@ -1549,8 +1563,6 @@ def command_doctor(args: argparse.Namespace) -> int:
     except WikiError as exc:
         config = load_config(root)
         add("error", "config", str(exc))
-    if not (root / ".obsidian").is_dir():
-        add("warning", "obsidian-marker", "No .obsidian directory found; this may not be an opened Obsidian vault.")
     for value in absolute_values(config):
         add("warning", "absolute-config-path", value)
     for name in SUITE_NAMES:
@@ -1571,7 +1583,7 @@ def command_doctor(args: argparse.Namespace) -> int:
             try:
                 resolved_wrapper.relative_to(root.resolve())
             except ValueError:
-                add("error", f"{target}-bridge-unsafe", f"Bridge points outside the vault: {wrapper.relative_to(root)}")
+                add("error", f"{target}-bridge-unsafe", f"Bridge points outside the workspace: {wrapper.relative_to(root)}")
                 continue
             if bridge_resolves_to_canonical(wrapper, canonical):
                 # `npx skills` keeps the canonical project copy in
@@ -1579,7 +1591,7 @@ def command_doctor(args: argparse.Namespace) -> int:
                 pass
             elif resolved_wrapper != wrapper.absolute():
                 add("error", f"{target}-bridge-target", f"Bridge does not point to canonical skill: {wrapper.relative_to(root)}")
-            elif "generated-by: managed-obsidian-wiki" not in wrapper.read_text(encoding="utf-8", errors="replace"):
+            elif not is_generated_bridge(wrapper.read_text(encoding="utf-8", errors="replace")):
                 add("warning", f"{target}-bridge-custom", f"Bridge is not generated: {wrapper.relative_to(root)}")
     for path in (root / "AGENTS.md", root / "CLAUDE.md"):
         if not path.exists():
@@ -1592,11 +1604,11 @@ def command_doctor(args: argparse.Namespace) -> int:
     lock_dir = rel_path(root, config, "paths", "state") / "write.lock"
     if lock_dir.exists():
         add("error", "writer-lock", f"Writer lock exists: {lock_dir.relative_to(root)}")
-    payload = {"vault": str(root), "python": sys.version.split()[0], "issues": issues}
+    payload = {"workspace": str(root), "vault": str(root), "python": sys.version.split()[0], "issues": issues}
     if args.json:
         print(json_dump(payload))
     elif not issues:
-        print("OK: vault, skills, and bridges are structurally ready")
+        print("OK: workspace, skills, and bridges are structurally ready")
     else:
         for issue in issues:
             print(f"{issue['level'].upper():7} {issue['code']:24} {issue['message']}")
@@ -1605,15 +1617,22 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--vault", type=Path, help="Obsidian vault root; otherwise locate from cwd/script path")
+    parser.add_argument(
+        "--workspace",
+        "--vault",
+        dest="vault",
+        metavar="WORKSPACE",
+        type=Path,
+        help="Managed wiki workspace root; otherwise locate from cwd/script path",
+    )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init", help="Incrementally initialize a managed wiki")
-    init_parser.add_argument("path", nargs="?", type=Path, help="Vault root (alternative to --vault)")
+    init_parser.add_argument("path", nargs="?", type=Path, help="Workspace root (alternative to --workspace/--vault)")
     init_parser.set_defaults(func=command_init)
 
-    locate_parser = subparsers.add_parser("locate", help="Locate the nearest managed Obsidian vault")
+    locate_parser = subparsers.add_parser("locate", help="Locate the nearest managed wiki workspace")
     locate_parser.set_defaults(func=command_locate)
 
     capture_parser = subparsers.add_parser("capture", help="Capture immutable local evidence")

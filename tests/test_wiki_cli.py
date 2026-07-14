@@ -108,13 +108,59 @@ class WikiCliTests(unittest.TestCase):
         self.assertIn("AGENTS.md", payload["preserved"])
         self.assertTrue((self.vault / "wiki" / "Wiki.base").is_file())
 
+    def test_plain_directory_is_a_first_class_workspace(self) -> None:
+        workspace = self.base / "plain-workspace"
+        workspace.mkdir()
+        canonical = workspace / ".agents" / "skills"
+        canonical.mkdir(parents=True)
+        for name in SUITE_NAMES:
+            shutil.copytree(SKILLS_ROOT / name, canonical / name)
+        cli = canonical / "wiki-configure" / "scripts" / "wiki.py"
+
+        def run(*args: str) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.run(
+                [sys.executable, str(cli), "--workspace", str(workspace), *args],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        initialized = run("--json", "init")
+        self.assertEqual(initialized.returncode, 0, initialized.stderr.decode())
+        initialized_payload = json.loads(initialized.stdout)
+        self.assertEqual(Path(initialized_payload["workspace"]).resolve(), workspace.resolve())
+        self.assertEqual(Path(initialized_payload["vault"]).resolve(), workspace.resolve())
+        self.assertTrue((workspace / ".wiki" / "config.json").is_file())
+        self.assertFalse((workspace / ".obsidian").exists())
+        self.assertFalse((workspace / "wiki" / "Wiki.base").exists())
+
+        doctor = run("doctor")
+        self.assertEqual(doctor.returncode, 0, doctor.stdout.decode() + doctor.stderr.decode())
+        self.assertIn(b"OK: workspace, skills, and bridges are structurally ready", doctor.stdout)
+
+        lint = run("lint", "--strict")
+        self.assertEqual(lint.returncode, 0, lint.stdout.decode() + lint.stderr.decode())
+
+    def test_explicit_uninitialized_plain_directory_reaches_diagnostics(self) -> None:
+        workspace = self.base / "uninitialized"
+        workspace.mkdir()
+        result = subprocess.run(
+            [sys.executable, str(CLI_SOURCE), "--workspace", str(workspace), "lint"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(b"missing-config", result.stdout)
+        self.assertNotIn(b"Could not locate", result.stderr)
+
     def test_config_path_escape_is_rejected_before_init_writes(self) -> None:
         config = copy.deepcopy(WIKI.DEFAULT_CONFIG)
         config["paths"]["raw_sources"] = "../outside"
         self.write_config(config)
         result = self.run_cli("init")
         self.assertEqual(result.returncode, 2)
-        self.assertIn(b"escapes the vault", result.stderr)
+        self.assertIn(b"escapes the workspace", result.stderr)
         self.assertFalse((self.base / "outside").exists())
         self.assertFalse((self.vault / "wiki").exists())
 
@@ -124,7 +170,7 @@ class WikiCliTests(unittest.TestCase):
         self.write_config(absolute)
         result = self.run_cli("init")
         self.assertEqual(result.returncode, 2)
-        self.assertIn(b"must be vault-relative", result.stderr)
+        self.assertIn(b"must be workspace-relative", result.stderr)
 
         outside = self.base / "symlink-outside"
         outside.mkdir()
@@ -138,7 +184,7 @@ class WikiCliTests(unittest.TestCase):
         self.write_config(symlinked)
         result = self.run_cli("init")
         self.assertEqual(result.returncode, 2)
-        self.assertIn(b"escapes the vault", result.stderr)
+        self.assertIn(b"escapes the workspace", result.stderr)
         self.assertFalse((outside / "raw").exists())
 
     def test_parent_capture_exclude_is_rejected_during_preflight(self) -> None:
@@ -210,7 +256,7 @@ class WikiCliTests(unittest.TestCase):
         result = self.run_cli("capture", str(source), "--classification", "public")
 
         self.assertEqual(result.returncode, 2)
-        self.assertIn(b"Capture destination escapes the vault", result.stderr)
+        self.assertIn(b"Capture destination escapes the workspace", result.stderr)
         self.assertEqual(list(outside.iterdir()), [])
 
     def test_reserved_source_filename_is_preserved_under_original(self) -> None:
@@ -389,7 +435,7 @@ class WikiCliTests(unittest.TestCase):
         self.init()
         result = self.run_cli("doctor")
         self.assertEqual(result.returncode, 0, result.stdout.decode() + result.stderr.decode())
-        self.assertIn(b"OK: vault, skills, and bridges are structurally ready", result.stdout)
+        self.assertIn(b"OK: workspace, skills, and bridges are structurally ready", result.stdout)
 
     def test_doctor_rejects_external_bridge_symlink(self) -> None:
         self.init()

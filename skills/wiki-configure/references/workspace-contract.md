@@ -1,4 +1,6 @@
-# Vault 契约与 Obsidian 约定
+# Workspace 契约与可选 Obsidian 集成
+
+CLI 的旧版 `--vault` 参数仍作为 `--workspace` 的等价别名，不要求存在 `.obsidian/`。Markdown 与本地文件是权威层；Obsidian 只是可选前端。
 
 ## 默认层级
 
@@ -12,7 +14,7 @@
 | `.wiki/` | system | config、policy、events、transactions、state |
 | `.obsidian/` | human/app | 默认不修改 |
 
-在 `.wiki/config.json` 中映射实际路径。已有 vault 可以把其他 glob 声明为 human-owned 或 agent-owned；不要为追求默认目录而移动内容。
+在 `.wiki/config.json` 中映射实际路径。已有 workspace 可以把其他 glob 声明为 human-owned 或 agent-owned；不要为追求默认目录而移动内容。
 
 把 Markdown wiki 视为权威综合层。把 FTS、vector、qmd、Dataview、Bases 结果和 generated catalogs 视为可重建索引或视图，而非事实来源。
 
@@ -28,7 +30,7 @@
 - `.wiki/state/`：锁、缓存与其他可重建状态；
 - `wiki/_index.md`：人工维护的内容导航；
 - `wiki/_catalog.md`、`_sources.md`、`_backlinks.json`：生成导航；
-- `wiki/Wiki.base`：Obsidian Bases 视图。
+- `wiki/Wiki.base`：仅在检测到 Obsidian workspace 时创建的可选 Bases 视图。
 
 不要让 CLI 覆盖 `_index.md`。不要要求 log 由多个 agent append；需要时间线时从 event files 生成。
 
@@ -57,7 +59,7 @@ sources: [src-web-0123456789ab]
 
 推荐 confidence：`high`、`medium`、`low`、`unknown`。
 
-只有在 `_schema.md` 定义语义后才增加领域字段。保持 YAML 能被 Obsidian Properties 和 Bases 直接读取。
+只有在 `_schema.md` 定义语义后才增加领域字段。保持标准 YAML 可被通用 Markdown 工具读取，并兼容 Obsidian Properties 和 Bases。
 
 ## 页面类型
 
@@ -75,12 +77,12 @@ sources: [src-web-0123456789ab]
 
 让文件夹从数据中逐渐形成，不预建复杂 taxonomy。页面可通过 `domains` 跨文件夹分类。
 
-## Obsidian 约定
+## 可选 Obsidian 集成
 
 - 使用 `[[wikilinks]]` 表达 durable relationships；使用标准 `aliases` 解析替代标题。
 - 为重要 claim 使用 heading 或 block anchor，例如 `^claim-...`。
 - 文件名尽量使用 lowercase kebab-case；title/aliases 可使用中文和多语言。
-- 把 Bases 作为默认可视化层；把 Dataview 作为可选增强，不作为必需插件。
+- 检测到 Obsidian workspace 时可以把 Bases 作为默认可视化层；把 Dataview 作为可选增强，不作为必需插件。
 - 把附件原件放 raw，由 derived Markdown 引用；不要让远程易失 URL 成为唯一证据。
 - 不自动修改 `.obsidian/` 的 attachment、plugin、hotkey 或 workspace 设置。可给用户建议，只有明确要求时才改。
 
@@ -92,4 +94,4 @@ sources: [src-web-0123456789ab]
 
 ## 并发与安全
 
-保持一个写者。让 subagent 只读分析和提出 patch。写前检查 hash，冲突时停止覆盖。labels 不是 ACL；需要真正隔离的个人与公司 trust zones 应使用不同 vault/repository。
+保持一个写者。让 subagent 只读分析和提出 patch。写前检查 hash，冲突时停止覆盖。labels 不是 ACL；需要真正隔离的个人与公司 trust zones 应使用不同 workspace/repository。

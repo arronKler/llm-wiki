@@ -10,8 +10,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$VAULT/.obsidian"
-
 cd "$VAULT"
 npx --yes "skills@${SKILLS_CLI_VERSION}" add "$REPO_ROOT" \
   --skill '*' \
@@ -25,16 +23,17 @@ for skill in wiki-configure wiki-ingest wiki-maintain wiki-query; do
 done
 
 CLI="$VAULT/.agents/skills/wiki-configure/scripts/wiki.py"
-python3 "$CLI" --vault "$VAULT" init
-python3 "$CLI" --vault "$VAULT" doctor
-python3 "$CLI" --vault "$VAULT" lint --strict
+python3 "$CLI" --workspace "$VAULT" init
+python3 "$CLI" --workspace "$VAULT" doctor
+python3 "$CLI" --workspace "$VAULT" lint --strict
 
 printf 'release smoke evidence\n' > "$VAULT/inbox/release-smoke.txt"
-python3 "$CLI" --vault "$VAULT" capture "$VAULT/inbox/release-smoke.txt" --classification public
-python3 "$CLI" --vault "$VAULT" status
-python3 "$CLI" --vault "$VAULT" lint --strict
+python3 "$CLI" --workspace "$VAULT" capture "$VAULT/inbox/release-smoke.txt" --classification public
+python3 "$CLI" --workspace "$VAULT" status
+python3 "$CLI" --workspace "$VAULT" lint --strict
 
 test -f "$VAULT/skills-lock.json"
 test -n "$(find "$VAULT/raw/sources" -path '*/original/release-smoke.txt' -print -quit)"
+test ! -e "$VAULT/wiki/Wiki.base"
 
 echo "npx skills smoke test passed"

@@ -20,7 +20,7 @@
 
 同时提供：
 
-1. 用 `[[页面标题#相关标题]]` 或明确 vault 相对路径帮助用户在 Obsidian 导航；
+1. 用 `[[页面标题#相关标题]]` 或明确 workspace 相对路径帮助用户在任意 Markdown 前端导航；启用 Obsidian 时这些 wikilinks 可直接跳转；
 2. 用 raw `source_id` + locator 证明 material claim。
 
 示例：
@@ -69,7 +69,7 @@ Q2 支付转化率记录为 18.4%，口径排除退款订单。
 1. 先说明 wiki 的 as_of；
 2. 使用当前 agent 允许的外部工具获取 public 或获批资料；
 3. 不在外部查询中泄露 non-public 内容；
-4. 把临时外部结果与 vault 证据分开引用；
+4. 把临时外部结果与 workspace 证据分开引用；
 5. 除非用户明确要求 ingest，不把临时结果写回 wiki。
 
 ## 生成持久化 output

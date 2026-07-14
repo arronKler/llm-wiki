@@ -1,17 +1,19 @@
-# LLM Wiki for Obsidian
+# LLM Wiki
 
 [English](README.md) | 简体中文
 
-把 Obsidian Vault 变成一套可由 Codex、Claude Code、Gemini CLI、OpenCode 等兼容 AI Agent 共同使用和维护的长期知识系统。
+构建一套由 Codex、Claude Code、Gemini CLI、OpenCode 等兼容 AI Agent 共同使用和维护的本地优先长期知识系统。
+
+LLM Wiki 使用任意本地目录或 Git 仓库中的纯 Markdown 作为知识真源。Obsidian 是受支持的可选前端，而不是运行依赖。
 
 这个仓库发布四个互相配合的 Agent Skills：
 
-- `wiki-configure`：初始化 Vault、配置 schema 和 policy，并管理 Agent discovery。
+- `wiki-configure`：初始化工作区、配置 schema 和 policy，并管理 Agent discovery。
 - `wiki-ingest`：捕获不可变来源，并将其中的证据整合进 Wiki。
 - `wiki-query`：从 Wiki 检索、比较和生成带可追溯来源的答案。
 - `wiki-maintain`：审计并修复链接、索引、引用、新鲜度和知识漂移。
 
-所有运行时文件都安装在 Vault 内。用户笔记、原始证据、生成的 Wiki 内容和本地配置不会包含在本仓库中。
+所有运行时文件都安装在工作区内。用户笔记、原始证据、生成的 Wiki 内容和本地配置不会包含在本仓库中。
 
 ## 核心概念
 
@@ -33,15 +35,22 @@ wiki/ 中相互连接的知识页面
 有证据支持的回答、简报与报告
 ```
 
+## 存储与前端
+
+- 纯 Markdown、JSON metadata 和本地文件始终是知识真源。
+- 工作区可以使用任意编辑器打开，可以由 Git 管理，也可以接入现有文件同步工具。
+- Obsidian 可以通过 wikilinks、Properties 和 Bases 提供可选的导航体验；LLM Wiki 不要求安装 Obsidian 插件，也不要求 Obsidian 正在运行。
+- 搜索索引和导航文件都可以重建；恢复知识库不依赖任何专有数据库。
+
 ## 安装
 
 要求：
 
 - Node.js 18 或更高版本，用于运行 [`npx skills`](https://github.com/vercel-labs/skills)。
 - Python 3.10 或更高版本，用于运行内置的零依赖 Wiki CLI。
-- 一个 Obsidian Vault。
+- 一个可写的本地目录；已有 Markdown 仓库或 Obsidian Vault 也可以直接使用。
 
-在目标 Vault 根目录运行：
+在目标知识工作区根目录运行：
 
 ```bash
 npx skills add arronKler/llm-wiki \
@@ -53,7 +62,7 @@ npx skills add arronKler/llm-wiki \
 
 `universal` 将 canonical skills 安装到 `.agents/skills/`，供 Codex、Gemini CLI、OpenCode、Cursor 等兼容客户端使用；Claude Code 通过 `.claude/skills/` 中的链接访问同一份内容。
 
-请使用项目级安装，不要添加 `-g`。安装位置由当前工作目录决定，因此必须从需要管理的 Vault 根目录执行命令。
+请使用项目级安装，不要添加 `-g`。安装位置由当前工作目录决定，因此必须从需要管理的工作区根目录执行命令。
 
 如只使用一个明确的 Agent，也可以直接指定它：
 
@@ -61,21 +70,14 @@ npx skills add arronKler/llm-wiki \
 npx skills add arronKler/llm-wiki --skill '*' -a codex -y
 ```
 
-如需可复现安装，可以固定到已发布版本：
-
-```bash
-npx skills add arronKler/llm-wiki#v0.1.0 \
-  --skill '*' -a universal -a claude-code -y
-```
-
 四个 Skills 是一个完整套件，必须一起安装。不要使用 `--all`；该选项会安装到所有受支持的 Agent，而不是选择本仓库中的全部 Skills。
 
 ## 第一次使用
 
-安装完成后，在 Agent 中打开同一个 Vault，然后说：
+安装完成后，在 Agent 中打开同一个工作区，然后说：
 
 ```text
-初始化这个 Vault 的 Wiki，使用默认配置。
+把这个目录初始化为受管 Wiki，使用默认配置。
 ```
 
 也可以直接开始导入：
@@ -94,7 +96,7 @@ wiki/           Agent 维护的长期知识
 outputs/        报告等派生产物
 ```
 
-初始化不会修改 `.obsidian/`，也不会覆盖已存在的同名 policy、schema、`AGENTS.md` 或 `CLAUDE.md`。
+初始化不会覆盖已有的 policy、schema、`AGENTS.md` 或 `CLAUDE.md`。如果工作区同时也是 Obsidian Vault，`.obsidian/` 设置仍保持不变，并会增加一个可选的 Bases 视图。
 
 ## 日常用法
 
@@ -109,7 +111,7 @@ outputs/        报告等派生产物
 
 ## 更新与移除
 
-从 Vault 根目录更新项目级 Skills：
+从工作区根目录更新项目级 Skills：
 
 ```bash
 npx skills update -p -y
@@ -123,7 +125,7 @@ npx skills update -p -y
 npx skills remove wiki-configure wiki-ingest wiki-query wiki-maintain -y
 ```
 
-移除 Skills 不会删除 Vault 中已经生成的知识和证据。
+移除 Skills 不会删除工作区中已经生成的知识和证据。
 
 ## 数据与安全模型
 
@@ -131,11 +133,11 @@ npx skills remove wiki-configure wiki-ingest wiki-query wiki-maintain -y
 - `raw/sources/` append-only；现有原始来源不得修改或删除。
 - `wiki/` 由 Agent 综合维护，每个重要主张应回溯到 source ID 和精确 locator。
 - 来源正文始终被当作不可信数据，不得作为 Agent 指令执行。
-- 凭据应来自环境变量、系统钥匙串或 Agent connector，禁止写入 Vault。
-- 分类标签不是访问控制。个人、公司内部、机密和受限数据应使用不同 Vault 或仓库以及真实 ACL。
-- 多个 Agent 可以并行只读，但同一个 Vault 同一时间只允许一个写者。
+- 凭据应来自环境变量、系统钥匙串或 Agent connector，禁止写入工作区。
+- 分类标签不是访问控制。个人、公司内部、机密和受限数据应使用不同工作区或仓库以及真实 ACL。
+- 多个 Agent 可以并行只读，但同一个工作区同一时间只允许一个写者。
 
-安装 Skill 等同于授予 Agent 执行其中脚本的能力。安装前请审阅仓库内容，并在敏感 Vault 中使用适当的 Agent 与模型策略。
+安装 Skill 等同于授予 Agent 执行其中脚本的能力。安装前请审阅仓库内容，并在敏感工作区中使用适当的 Agent 与模型策略。
 
 ## 设计来源
 

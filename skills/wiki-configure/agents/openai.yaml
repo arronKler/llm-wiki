@@ -1,4 +1,4 @@
 interface:
   display_name: "Wiki Configure"
   short_description: "Configure schemas, policies, adapters, and agent bridges"
-  default_prompt: "Use $wiki-configure to configure this vault as a portable agent-managed wiki."
+  default_prompt: "Use $wiki-configure to configure this local workspace as a portable agent-managed wiki."

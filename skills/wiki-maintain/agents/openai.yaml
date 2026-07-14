@@ -1,4 +1,4 @@
 interface:
   display_name: "Wiki Maintain"
-  short_description: "Audit and safely repair the Obsidian knowledge graph"
-  default_prompt: "Use $wiki-maintain to audit my Obsidian wiki and propose safe repairs."
+  short_description: "Audit and safely repair the managed knowledge graph"
+  default_prompt: "Use $wiki-maintain to audit my managed local wiki and propose safe repairs."

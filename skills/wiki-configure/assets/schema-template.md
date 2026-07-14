@@ -20,11 +20,11 @@ This file is the durable contract for the compiled wiki. Change it deliberately 
 | `wiki/` | Agent | Maintain coherent, interlinked synthesis with source IDs. |
 | `outputs/` | Agent | Reports and other deliverables; never primary evidence. |
 | `.wiki/` | System | Configuration, events, transactions, and rebuildable state. |
-| `.obsidian/` | Human/app | Do not change unless explicitly requested. |
+| `.obsidian/` | Human/app | Optional Obsidian settings; do not change unless explicitly requested. |
 
 ## Page properties
 
-Use Obsidian-compatible YAML properties:
+Use portable YAML frontmatter properties:
 
 ```yaml
 ---
@@ -43,7 +43,7 @@ sources: [src-web-0123456789ab]
 ---
 ```
 
-Required for new knowledge pages: `title`, `type`, `created`, `updated`, and `sources`. Use `aliases`, not custom fields alone, so Obsidian resolves alternate-title wikilinks. Preserve the legacy `also` field when encountered until an explicit migration.
+Required for new knowledge pages: `title`, `type`, `created`, `updated`, and `sources`. Use standard `aliases`, not custom fields alone, so alternate-title links remain portable across tools. Preserve the legacy `also` field when encountered until an explicit migration.
 
 Recommended controlled values:
 
@@ -92,12 +92,12 @@ Use a stable locator when available: page, line, heading, block, timestamp, mess
 7. Prefer marking `superseded` or archiving over hard deletion.
 8. Update the curated `_index.md` after page edits; rebuild generated catalog/backlinks only at the end.
 
-## Obsidian conventions
+## Markdown and link conventions
 
 - Use `[[wikilinks]]` for durable internal relationships and standard `aliases` for alternate titles.
 - Use heading or block anchors for stable claim locations when useful.
 - Keep filenames lowercase kebab-case where practical; titles and aliases may be Chinese or multilingual.
-- Keep YAML properties compatible with Obsidian Properties and Bases. Dataview may be added as an optional view layer but is never required for correctness.
+- Keep YAML frontmatter portable. When Obsidian is used, keep it compatible with Properties and Bases; Dataview may be added as an optional view layer but is never required for correctness.
 - Keep generated files prefixed with `_` and exclude them from normal knowledge-page counts.
 
 ## Writing standard

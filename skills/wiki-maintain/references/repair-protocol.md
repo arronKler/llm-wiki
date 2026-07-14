@@ -21,7 +21,7 @@
 2. 记录每个目标文件的路径、当前 hash 和预期修改。
 3. 生成最小 diff；让 subagent 只提出候选 diff，不直接写盘。
 4. 由单一主 agent 在写前立即重读目标文件。
-5. hash 不同或 Obsidian/另一 agent 已改动时停止覆盖，重新合并。
+5. hash 不同或编辑器/另一 agent 已改动时停止覆盖，重新合并。
 6. 应用后运行 lint/doctor，并记录一个 maintain event。
 
 不要把无关格式化、目录重排或文风重写塞入修复 transaction。

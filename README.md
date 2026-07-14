@@ -1,17 +1,19 @@
-# LLM Wiki for Obsidian
+# LLM Wiki
 
 English | [简体中文](README_ZH.md)
 
-Turn an Obsidian vault into a durable knowledge system that Codex, Claude Code, Gemini CLI, OpenCode, and other compatible AI agents can share and maintain.
+Build a durable, local-first knowledge system that Codex, Claude Code, Gemini CLI, OpenCode, and other compatible AI agents can share and maintain.
+
+LLM Wiki stores its source of truth as plain Markdown inside any local directory or Git repository. Obsidian is a supported optional frontend, not a runtime requirement.
 
 This repository ships four interoperable Agent Skills:
 
-- `wiki-configure` initializes the vault, configures schemas and policies, and manages agent discovery.
+- `wiki-configure` initializes the workspace, configures schemas and policies, and manages agent discovery.
 - `wiki-ingest` captures immutable sources and integrates their evidence into the wiki.
 - `wiki-query` searches, compares, and answers from the wiki with traceable sources.
 - `wiki-maintain` audits and repairs links, indexes, citations, freshness, and knowledge drift.
 
-All runtime files are installed inside the vault. User notes, source evidence, generated wiki content, and local configuration are never bundled with this repository.
+All runtime files are installed inside the workspace. User notes, source evidence, generated wiki content, and local configuration are never bundled with this repository.
 
 ## Core Concepts
 
@@ -33,15 +35,22 @@ Connected knowledge pages in wiki/
 Evidence-backed answers, briefs, and reports
 ```
 
+## Storage and Frontends
+
+- Plain Markdown, JSON metadata, and local files remain the source of truth.
+- The workspace can be opened with any editor, managed with Git, or synchronized with your existing file tools.
+- Obsidian adds optional navigation through wikilinks, Properties, and Bases. LLM Wiki does not require an Obsidian plugin or a running Obsidian application.
+- Search indexes and navigation files are rebuildable; no proprietary database is required to recover the knowledge base.
+
 ## Installation
 
 Requirements:
 
 - Node.js 18 or newer to run [`npx skills`](https://github.com/vercel-labs/skills).
 - Python 3.10 or newer to run the built-in, dependency-free Wiki CLI.
-- An Obsidian vault.
+- A writable local directory. An existing Markdown repository or Obsidian vault also works.
 
-Run this command from the root of the target vault:
+Run this command from the root of the target knowledge workspace:
 
 ```bash
 npx skills add arronKler/llm-wiki \
@@ -53,7 +62,7 @@ npx skills add arronKler/llm-wiki \
 
 `universal` installs the canonical skills into `.agents/skills/` for compatible clients such as Codex, Gemini CLI, OpenCode, and Cursor. Claude Code accesses the same files through links in `.claude/skills/`.
 
-Use a project-scoped installation and do not add `-g`. The current working directory determines the installation target, so run the command from the vault you want to manage.
+Use a project-scoped installation and do not add `-g`. The current working directory determines the installation target, so run the command from the workspace you want to manage.
 
 If you only use one specific agent, you can target it directly:
 
@@ -61,21 +70,14 @@ If you only use one specific agent, you can target it directly:
 npx skills add arronKler/llm-wiki --skill '*' -a codex -y
 ```
 
-For a reproducible installation, pin a published version:
-
-```bash
-npx skills add arronKler/llm-wiki#v0.1.0 \
-  --skill '*' -a universal -a claude-code -y
-```
-
 The four Skills form one suite and must be installed together. Do not use `--all`: that flag installs into every supported agent, rather than selecting every Skill in this repository.
 
 ## First Use
 
-After installation, open the same vault in your agent and say:
+After installation, open the same workspace in your agent and say:
 
 ```text
-Initialize this vault as a managed wiki using the default configuration.
+Initialize this directory as a managed wiki using the default configuration.
 ```
 
 You can also begin by importing a source:
@@ -94,7 +96,7 @@ wiki/           Agent-maintained durable knowledge
 outputs/        Derived reports and other generated deliverables
 ```
 
-Initialization does not modify `.obsidian/` and does not overwrite existing policy, schema, `AGENTS.md`, or `CLAUDE.md` files.
+Initialization does not overwrite existing policy, schema, `AGENTS.md`, or `CLAUDE.md` files. If the workspace is also an Obsidian vault, its `.obsidian/` settings remain untouched and an optional Bases view is added.
 
 ## Everyday Use
 
@@ -109,7 +111,7 @@ Each Skill contains its detailed workflow, safety boundaries, and data contracts
 
 ## Updating and Removing
 
-Update project-scoped Skills from the vault root:
+Update project-scoped Skills from the workspace root:
 
 ```bash
 npx skills update -p -y
@@ -123,7 +125,7 @@ Remove the Skills:
 npx skills remove wiki-configure wiki-ingest wiki-query wiki-maintain -y
 ```
 
-Removing the Skills does not delete knowledge or evidence already created in the vault.
+Removing the Skills does not delete knowledge or evidence already created in the workspace.
 
 ## Data and Security Model
 
@@ -131,11 +133,11 @@ Removing the Skills does not delete knowledge or evidence already created in the
 - `raw/sources/` is append-only. Existing source evidence must not be modified or deleted.
 - `wiki/` contains agent-maintained synthesis. Every important claim should trace back to a source ID and precise locator.
 - Source content is always treated as untrusted data and must never be executed as agent instructions.
-- Credentials must come from environment variables, the system keychain, or an agent connector, never from the vault.
-- Classification labels are not access controls. Separate personal, internal, confidential, and restricted data with distinct vaults or repositories and real ACLs.
-- Multiple agents may read concurrently, but a vault must have only one writer at a time.
+- Credentials must come from environment variables, the system keychain, or an agent connector, never from the workspace.
+- Classification labels are not access controls. Separate personal, internal, confidential, and restricted data with distinct workspaces or repositories and real ACLs.
+- Multiple agents may read concurrently, but a workspace must have only one writer at a time.
 
-Installing a Skill grants an agent permission to execute its scripts. Review the repository before installation, and use appropriate agent and model policies for sensitive vaults.
+Installing a Skill grants an agent permission to execute its scripts. Review the repository before installation, and use appropriate agent and model policies for sensitive workspaces.
 
 ## Inspiration
 

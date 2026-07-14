@@ -39,5 +39,5 @@ jobs:
           package-manager-cache: false
       - name: Verify repository discovery
         run: npx --yes skills@1.5.17 add "$GITHUB_WORKSPACE" --list
-      - name: Install into a clean Vault and exercise the runtime
+      - name: Install into a clean Markdown workspace and exercise the runtime
         run: bash tests/smoke-npx.sh
