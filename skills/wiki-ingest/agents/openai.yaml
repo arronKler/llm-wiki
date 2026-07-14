@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wiki Ingest"
+  short_description: "Capture sources and compound them into the Obsidian wiki"
+  default_prompt: "Use $wiki-ingest to capture this source and integrate it into my Obsidian wiki."

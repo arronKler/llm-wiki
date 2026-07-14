@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wiki Query"
+  short_description: "Answer from the Obsidian wiki with traceable evidence"
+  default_prompt: "Use $wiki-query to answer this question from my Obsidian wiki with evidence."

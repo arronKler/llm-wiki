@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run standard-library tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile CLI
+        run: python -m py_compile skills/wiki-configure/scripts/wiki.py
+
+  npx-skills:
+    name: npx skills installation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Verify repository discovery
+        run: npx --yes skills@1.5.17 add "$GITHUB_WORKSPACE" --list
+      - name: Install into a clean Vault and exercise the runtime
+        run: bash tests/smoke-npx.sh

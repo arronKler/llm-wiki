@@ -1,0 +1,68 @@
+filters:
+  and:
+    - 'file.inFolder("wiki")'
+    - 'file.ext == "md"'
+    - 'file.name != "_index"'
+    - 'file.name != "_schema"'
+    - 'file.name != "_catalog"'
+    - 'file.name != "_sources"'
+    - 'file.name != "_lint"'
+properties:
+  file.name:
+    displayName: 页面
+  type:
+    displayName: 类型
+  domains:
+    displayName: 领域
+  status:
+    displayName: 状态
+  classification:
+    displayName: 敏感度
+  updated:
+    displayName: 更新日期
+  as_of:
+    displayName: 数据截至
+  review_after:
+    displayName: 复核日期
+  confidence:
+    displayName: 置信度
+  sources:
+    displayName: 来源
+views:
+  - type: table
+    name: 全部知识
+    groupBy:
+      property: type
+      direction: ASC
+    order:
+      - file.name
+      - type
+      - domains
+      - status
+      - updated
+      - as_of
+      - confidence
+      - sources
+  - type: table
+    name: 待复核
+    filters:
+      or:
+        - 'status == "needs-review"'
+        - 'status == "conflicted"'
+        - 'review_after <= today()'
+    order:
+      - file.name
+      - status
+      - review_after
+      - as_of
+      - sources
+  - type: table
+    name: 最近更新
+    filters:
+      and:
+        - 'updated >= today() - "30d"'
+    order:
+      - file.name
+      - type
+      - updated
+      - status
