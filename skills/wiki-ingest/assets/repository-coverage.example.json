@@ -1,0 +1,462 @@
+{
+  "kind": "llm-wiki.repository-coverage",
+  "schema_version": 1,
+  "repository": {
+    "identity": "https://example.invalid/acme/widget",
+    "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "manifest_source_id": "src-git-manifest",
+  "home_page": "wiki/widget-repository.md",
+  "batch_state": "comprehensive-complete",
+  "discovery_gaps": [],
+  "repository_lenses": [
+    {
+      "id": "purpose-product-boundary",
+      "status": "covered",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Purpose and product boundary",
+      "evidence": [
+        {
+          "class": "boundary",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#CreateWidget"
+        }
+      ],
+      "blocking": false
+    },
+    {
+      "id": "domain-business-logic",
+      "status": "covered",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Domain and business logic",
+      "evidence": [
+        {
+          "class": "implementation",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#validate_request"
+        }
+      ],
+      "blocking": false
+    },
+    {
+      "id": "architecture-dependency-flow",
+      "status": "covered",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Architecture and dependency flow",
+      "evidence": [
+        {
+          "class": "reachability",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#route_registration"
+        }
+      ],
+      "blocking": false
+    },
+    {
+      "id": "public-interfaces",
+      "status": "covered",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Public interfaces",
+      "evidence": [
+        {
+          "class": "boundary",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#CreateWidgetRequest"
+        }
+      ],
+      "blocking": false
+    },
+    {
+      "id": "data-state",
+      "status": "covered",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Data and state",
+      "evidence": [
+        {
+          "class": "boundary",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#widget_repository"
+        }
+      ],
+      "blocking": false
+    },
+    {
+      "id": "configuration-delivery",
+      "status": "covered",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Configuration and delivery",
+      "evidence": [
+        {
+          "class": "boundary",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:config/widget.yaml#/creation"
+        }
+      ],
+      "blocking": false
+    },
+    {
+      "id": "security-trust",
+      "status": "covered",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Security and trust",
+      "evidence": [
+        {
+          "class": "implementation",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#authorize"
+        }
+      ],
+      "blocking": false
+    },
+    {
+      "id": "ownership-maintenance",
+      "status": "covered",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Ownership and maintenance",
+      "evidence": [
+        {
+          "class": "boundary",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:CODEOWNERS#widget-api"
+        }
+      ],
+      "blocking": false
+    },
+    {
+      "id": "verification",
+      "status": "covered",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Verification",
+      "evidence": [
+        {
+          "class": "verification",
+          "source_id": "src-git-test",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tests/test_create_widget.py#test_create_widget"
+        }
+      ],
+      "blocking": false
+    },
+    {
+      "id": "evolution",
+      "status": "not-applicable",
+      "page": "wiki/widget-repository.md",
+      "anchor": "Evolution",
+      "evidence": [],
+      "reason": "No design-history claim is needed to explain the pinned implementation.",
+      "blocking": false
+    }
+  ],
+  "discovery_records": [
+    {
+      "id": "route-create-widget",
+      "kind": "route",
+      "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#route_registration",
+      "module_id": "create-widget"
+    },
+    {
+      "id": "helper-widget-validation",
+      "kind": "shared-capability",
+      "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/domain/validate_widget.py#validate_widget",
+      "module_id": "widget-validation"
+    },
+    {
+      "id": "vendored-client",
+      "kind": "vendored-code",
+      "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:vendor/client",
+      "disposition": "excluded",
+      "reason": "The pinned third-party client is inventoried but not owned or implemented by this repository."
+    }
+  ],
+  "inventory_groups": [
+    {
+      "id": "widget-runtime",
+      "paths": [
+        "src/api/create_widget.py",
+        "src/domain/validate_widget.py"
+      ],
+      "module_ids": [
+        "create-widget",
+        "widget-validation"
+      ]
+    },
+    {
+      "id": "repository-support",
+      "paths": [
+        "CODEOWNERS",
+        "config"
+      ],
+      "module_ids": [
+        "create-widget"
+      ]
+    },
+    {
+      "id": "widget-verification",
+      "paths": [
+        "tests"
+      ],
+      "module_ids": [
+        "create-widget"
+      ]
+    },
+    {
+      "id": "vendored-client",
+      "paths": [
+        "vendor/client"
+      ],
+      "disposition": "excluded",
+      "reason": "Vendored third-party implementation is outside the repository's ownership boundary."
+    }
+  ],
+  "modules": [
+    {
+      "id": "create-widget",
+      "title": "Create Widget",
+      "materiality": "material",
+      "materiality_reason": "Owns an independently reachable API operation, business decisions, and state changes.",
+      "paths": [
+        "src/api/create_widget.py"
+      ],
+      "page": "wiki/widget-runtime.md",
+      "anchor": "Create Widget",
+      "analysis_depth": "behavioral",
+      "verification": {
+        "status": "test-supported"
+      },
+      "dossier": {
+        "scope": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Scope"
+        },
+        "actors": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Actors"
+        },
+        "entrypoints": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Entrypoints"
+        },
+        "components": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Components"
+        },
+        "behavior": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Behavior"
+        },
+        "state": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#State"
+        },
+        "interfaces": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Interfaces"
+        },
+        "controls": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Controls"
+        },
+        "failure": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Failure and recovery"
+        },
+        "verification": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Verification"
+        },
+        "evolution": {
+          "status": "documented",
+          "locator": "wiki/widget-runtime.md#Evolution"
+        }
+      },
+      "evidence": [
+        {
+          "class": "reachability",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#route_registration"
+        },
+        {
+          "class": "implementation",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#CreateWidget.execute"
+        },
+        {
+          "class": "boundary",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#widget_repository"
+        },
+        {
+          "class": "verification",
+          "source_id": "src-git-test",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tests/test_create_widget.py#test_create_widget"
+        }
+      ],
+      "flow_ids": [
+        "create-widget-request"
+      ],
+      "gaps": []
+    },
+    {
+      "id": "widget-validation",
+      "title": "Widget Validation",
+      "materiality": "supporting",
+      "materiality_reason": "Provides a stable validation contract used by the owning Create Widget capability.",
+      "owner_module_id": "create-widget",
+      "paths": [
+        "src/domain/validate_widget.py"
+      ],
+      "page": "wiki/widget-runtime.md",
+      "anchor": "Widget Validation",
+      "analysis_depth": "surface",
+      "verification": {
+        "status": "gap",
+        "reason": "No independent validation test or contract was found at this revision."
+      },
+      "dossier": {},
+      "evidence": [
+        {
+          "class": "reachability",
+          "source_id": "src-git-main",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#validate_widget_call"
+        },
+        {
+          "class": "boundary",
+          "source_id": "src-git-helper",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/domain/validate_widget.py#validate_widget"
+        }
+      ],
+      "flow_ids": [],
+      "gaps": [],
+      "disposition": {
+        "reason": "Documented as supporting behavior under its owning material capability.",
+        "evidence": {
+          "source_id": "src-git-helper",
+          "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/domain/validate_widget.py#validate_widget"
+        }
+      }
+    }
+  ],
+  "flows": [
+    {
+      "id": "create-widget-request",
+      "module_ids": [
+        "create-widget"
+      ],
+      "page": "wiki/widget-runtime.md",
+      "anchor": "Create Widget Request",
+      "steps": [
+        {
+          "stage": "actor-trigger",
+          "description": "An authorized API client requests widget creation.",
+          "module_ids": [
+            "create-widget"
+          ],
+          "evidence": [
+            {
+              "class": "reachability",
+              "source_id": "src-git-main",
+              "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#route_registration"
+            }
+          ]
+        },
+        {
+          "stage": "ingress",
+          "description": "The route parses the request and establishes the authorization boundary.",
+          "module_ids": [
+            "create-widget"
+          ],
+          "evidence": [
+            {
+              "class": "boundary",
+              "source_id": "src-git-main",
+              "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#CreateWidgetRequest"
+            }
+          ]
+        },
+        {
+          "stage": "orchestration",
+          "description": "The handler invokes validation and the creation use case.",
+          "module_ids": [
+            "create-widget"
+          ],
+          "evidence": [
+            {
+              "class": "implementation",
+              "source_id": "src-git-main",
+              "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#CreateWidget.execute"
+            }
+          ]
+        },
+        {
+          "stage": "domain-decision",
+          "description": "Business validation accepts or rejects the requested widget attributes.",
+          "module_ids": [
+            "create-widget"
+          ],
+          "evidence": [
+            {
+              "class": "implementation",
+              "source_id": "src-git-helper",
+              "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/domain/validate_widget.py#validate_widget"
+            }
+          ]
+        },
+        {
+          "stage": "state-interface-boundary",
+          "description": "The use case persists the widget through the repository interface.",
+          "module_ids": [
+            "create-widget"
+          ],
+          "evidence": [
+            {
+              "class": "boundary",
+              "source_id": "src-git-main",
+              "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#widget_repository"
+            }
+          ]
+        },
+        {
+          "stage": "outcome",
+          "description": "The API returns the created widget identifier.",
+          "module_ids": [
+            "create-widget"
+          ],
+          "evidence": [
+            {
+              "class": "boundary",
+              "source_id": "src-git-main",
+              "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#CreateWidgetResponse"
+            }
+          ]
+        },
+        {
+          "stage": "failure-recovery",
+          "description": "Validation failures return a client error; persistence failures are logged and translated without retry.",
+          "module_ids": [
+            "create-widget"
+          ],
+          "evidence": [
+            {
+              "class": "implementation",
+              "source_id": "src-git-main",
+              "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:src/api/create_widget.py#handle_failure"
+            }
+          ]
+        },
+        {
+          "stage": "verification-observability",
+          "description": "A representative test verifies success and failure outcomes.",
+          "module_ids": [
+            "create-widget"
+          ],
+          "evidence": [
+            {
+              "class": "verification",
+              "source_id": "src-git-test",
+              "locator": "repository@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tests/test_create_widget.py#test_create_widget"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

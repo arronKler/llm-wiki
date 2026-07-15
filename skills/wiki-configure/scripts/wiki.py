@@ -29,7 +29,7 @@ import uuid
 from collections import Counter, defaultdict
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Iterator
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 
 SCRIPT_PATH = Path(__file__).resolve()
@@ -53,6 +53,86 @@ DEFAULT_SITE_THEME = "default"
 DEFAULT_SITE_ADDONS = {"search": {"enabled": True}}
 BUILTIN_SITE_THEMES = ("default", "editorial", "minimal")
 BUILTIN_SITE_ADDONS = ("search", "toc", "graph", "code-copy", "facets")
+REPOSITORY_COVERAGE_BATCH_STATES = (
+    "architecture-baseline",
+    "functional-analysis-partial",
+    "comprehensive-complete",
+)
+REPOSITORY_MODULE_MATERIALITIES = (
+    "material",
+    "supporting",
+    "boundary-only",
+    "excluded",
+)
+REPOSITORY_DIRECT_DISPOSITIONS = ("excluded", "not-applicable")
+REPOSITORY_ANALYSIS_DEPTHS = ("inventory", "surface", "behavioral")
+REPOSITORY_VERIFICATION_STATUSES = (
+    "test-supported",
+    "contract-supported",
+    "gap",
+    "not-applicable",
+)
+REPOSITORY_EVIDENCE_CLASSES = (
+    "reachability",
+    "implementation",
+    "boundary",
+    "verification",
+)
+REPOSITORY_DOSSIER_FACETS = (
+    "scope",
+    "actors",
+    "entrypoints",
+    "components",
+    "behavior",
+    "state",
+    "interfaces",
+    "controls",
+    "failure",
+    "verification",
+    "evolution",
+)
+REPOSITORY_REQUIRED_DOSSIER_FACETS = (
+    "scope",
+    "entrypoints",
+    "components",
+    "behavior",
+    "failure",
+    "verification",
+    "evolution",
+)
+REPOSITORY_LENS_IDS = (
+    "purpose-product-boundary",
+    "domain-business-logic",
+    "architecture-dependency-flow",
+    "public-interfaces",
+    "data-state",
+    "configuration-delivery",
+    "security-trust",
+    "ownership-maintenance",
+    "verification",
+    "evolution",
+)
+REPOSITORY_LENS_STATUSES = (
+    "covered",
+    "partial",
+    "blocked",
+    "not-applicable",
+)
+REPOSITORY_FLOW_STAGES = (
+    "actor-trigger",
+    "ingress",
+    "orchestration",
+    "domain-decision",
+    "state-interface-boundary",
+    "outcome",
+    "failure-recovery",
+    "verification-observability",
+)
+REPOSITORY_GIT_OBJECT_ID_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
+REPOSITORY_LOCATOR_FRAGMENT_RE = re.compile(r"[^\s#\x00-\x1f\x7f]{1,512}\Z")
+REPOSITORY_LINE_LOCATOR_RE = re.compile(r"L([1-9][0-9]*)(?:-L?([1-9][0-9]*))?\Z")
+REPOSITORY_MAX_PATH_BYTES = 4096
+REPOSITORY_MAX_PATH_PARTS = 256
 THEME_OPTION_SCHEMA: dict[str, dict[str, Any]] = {
     "accent": {"type": "string", "pattern": "hex-color"},
     "density": {"type": "string", "enum": ["compact", "comfortable"]},
@@ -151,6 +231,16 @@ def sha256_bytes(data: bytes) -> str:
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def git_blob_object_id(path: Path, algorithm: str) -> str:
+    """Compute the Git blob object ID for exact bytes without loading the file."""
+    digest = hashlib.new(algorithm)
+    digest.update(f"blob {path.stat().st_size}\0".encode())
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
@@ -524,9 +614,191 @@ class Page:
     summary: str
 
 
+def markdown_visible_text(text: str) -> str:
+    """Mask non-rendered Markdown while preserving offsets and newlines."""
+    characters = list(text)
+
+    def mask(start: int, end: int) -> None:
+        for index in range(start, end):
+            if characters[index] not in {"\n", "\r"}:
+                characters[index] = " "
+
+    for match in re.finditer(r"<!--.*?(?:-->|\Z)", text, re.DOTALL):
+        mask(match.start(), match.end())
+    for match in re.finditer(
+        r"<(pre|code)\b[^>]*>.*?(?:</\1\s*>|\Z)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        mask(match.start(), match.end())
+
+    visible = "".join(characters)
+    fence_character: str | None = None
+    fence_length = 0
+    fence_container_indent = 0
+    fence_blockquote_depth = 0
+    list_stack: list[tuple[int, int]] = []
+    current_blockquote_depth = 0
+    paragraph_container: tuple[int, tuple[tuple[int, int], ...]] | None = None
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        end = offset + len(raw_line)
+        line = visible[offset:end].rstrip("\r\n")
+        blockquote = re.match(r"^(?: {0,3}>[ \t]?)+", line)
+        fence_line = line[blockquote.end() :] if blockquote else line
+        blockquote_depth = blockquote.group(0).count(">") if blockquote else 0
+        if blockquote_depth != current_blockquote_depth:
+            list_stack.clear()
+            paragraph_container = None
+            current_blockquote_depth = blockquote_depth
+        expanded_line = fence_line.expandtabs(4)
+        leading_spaces = len(expanded_line) - len(expanded_line.lstrip(" "))
+        if fence_character is not None and blockquote_depth != fence_blockquote_depth:
+            fence_character = None
+            fence_length = 0
+            fence_container_indent = 0
+        if fence_character is not None:
+            fence_candidate = (
+                expanded_line[fence_container_indent:]
+                if leading_spaces >= fence_container_indent
+                else expanded_line
+            )
+            closing = re.fullmatch(
+                rf" {{0,3}}{re.escape(fence_character)}{{{fence_length},}}\s*",
+                fence_candidate,
+            )
+            mask(offset, end)
+            paragraph_container = None
+            if closing:
+                fence_character = None
+                fence_length = 0
+                fence_container_indent = 0
+        else:
+            line_is_blank = not expanded_line.strip()
+            if not line_is_blank:
+                while list_stack and leading_spaces < list_stack[-1][1]:
+                    list_stack.pop()
+            else:
+                paragraph_container = None
+            list_marker = re.match(
+                r"^(?P<indent> *)(?:[-+*]|[0-9]+[.)])"
+                r"(?P<spacing> +)(?P<content>\S.*)?$",
+                expanded_line,
+            )
+            marker_indent = len(list_marker.group("indent")) if list_marker else 0
+            valid_list_marker = bool(
+                list_marker
+                and (
+                    (not list_stack and marker_indent <= 3)
+                    or (
+                        list_stack
+                        and list_stack[-1][1]
+                        <= marker_indent
+                        < list_stack[-1][1] + 4
+                    )
+                )
+            )
+            if valid_list_marker and list_marker is not None:
+                while list_stack and marker_indent <= list_stack[-1][0]:
+                    list_stack.pop()
+                spacing_length = len(list_marker.group("spacing"))
+                marker_end = list_marker.start("spacing")
+                content_indent = (
+                    list_marker.end("spacing")
+                    if spacing_length <= 4 and list_marker.group("content") is not None
+                    else marker_end + 1
+                )
+                list_stack.append((marker_indent, content_indent))
+                if spacing_length > 4 and list_marker.group("content") is not None:
+                    mask(offset, end)
+                    paragraph_container = None
+                    offset = end
+                    continue
+                fence_candidate = expanded_line[
+                    list_marker.end("spacing") :
+                ]
+            else:
+                content_indent = list_stack[-1][1] if list_stack else 0
+                fence_candidate = (
+                    expanded_line[content_indent:]
+                    if leading_spaces >= content_indent
+                    else expanded_line
+                )
+            opening = re.match(
+                r" {0,3}(`{3,}|~{3,})(?:[^\r\n]*)\Z", fence_candidate
+            )
+            if opening:
+                marker = opening.group(1)
+                fence_character = marker[0]
+                fence_length = len(marker)
+                fence_container_indent = content_indent
+                fence_blockquote_depth = blockquote_depth
+                mask(offset, end)
+                paragraph_container = None
+            else:
+                container = (blockquote_depth, tuple(list_stack))
+                indented_code_candidate = (
+                    not valid_list_marker
+                    and not line_is_blank
+                    and leading_spaces >= content_indent + 4
+                )
+                if indented_code_candidate and paragraph_container != container:
+                    mask(offset, end)
+                    paragraph_container = None
+                elif (
+                    valid_list_marker
+                    and list_marker is not None
+                    and list_marker.group("content") is None
+                ):
+                    paragraph_container = None
+                elif not line_is_blank:
+                    candidate = fence_candidate.lstrip(" ")
+                    begins_block = bool(
+                        re.match(r"#{1,6}(?:\s|$)", candidate)
+                        or re.match(r"(?:[-*_]\s*){3,}$", candidate)
+                        or re.match(r"<(?:address|article|aside|base|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|/?>)", candidate, re.IGNORECASE)
+                    )
+                    paragraph_container = None if begins_block else container
+        offset = end
+
+    visible = "".join(characters)
+    index = 0
+    while index < len(visible):
+        if visible[index] != "`":
+            index += 1
+            continue
+        run_end = index + 1
+        while run_end < len(visible) and visible[run_end] == "`":
+            run_end += 1
+        marker = "`" * (run_end - index)
+        search_at = run_end
+        closing = -1
+        while search_at < len(visible):
+            candidate = visible.find(marker, search_at)
+            if candidate < 0:
+                break
+            before_is_tick = candidate > 0 and visible[candidate - 1] == "`"
+            after = candidate + len(marker)
+            after_is_tick = after < len(visible) and visible[after] == "`"
+            if not before_is_tick and not after_is_tick:
+                closing = candidate
+                break
+            search_at = candidate + 1
+        if closing < 0:
+            index = run_end
+            continue
+        end = closing + len(marker)
+        mask(index, end)
+        index = end
+    return "".join(characters)
+
+
 def extract_links(text: str) -> tuple[str, ...]:
     links: list[str] = []
-    for match in WIKILINK_RE.finditer(text):
+    visible = markdown_visible_text(text)
+    for match in WIKILINK_RE.finditer(visible):
+        if match.start() > 0 and visible[match.start() - 1] == "\\":
+            continue
         raw = match.group(1).split("|", 1)[0].split("#", 1)[0].strip()
         if raw:
             links.append(raw)
@@ -570,11 +842,12 @@ def iter_pages(root: Path, config: dict[str, Any], *, reject_symlinks: bool = Fa
             continue
         text = path.read_text(encoding="utf-8-sig", errors="replace")
         metadata, body = parse_frontmatter(text)
-        heading = HEADING_RE.search(body)
+        visible_body = markdown_visible_text(body)
+        heading = HEADING_RE.search(visible_body)
         title = str(metadata.get("title") or (heading.group(1).strip() if heading else path.stem))
         aliases = tuple(dict.fromkeys(as_list(metadata.get("aliases"))))
         legacy = tuple(dict.fromkeys(as_list(metadata.get("also"))))
-        summary = str(metadata.get("summary") or first_summary(body))
+        summary = str(metadata.get("summary") or first_summary(visible_body))
         pages.append(
             Page(
                 path=path,
@@ -584,7 +857,7 @@ def iter_pages(root: Path, config: dict[str, Any], *, reject_symlinks: bool = Fa
                 title=title,
                 aliases=aliases,
                 legacy_aliases=legacy,
-                links=extract_links(text),
+                links=extract_links(body),
                 summary=summary,
             )
         )
@@ -2821,6 +3094,3102 @@ def command_export_capabilities(args: argparse.Namespace) -> int:
     return 0
 
 
+def repository_coverage_string(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise WikiError(f"Invalid repository coverage: {label} must be a non-empty string.")
+    return value.strip()
+
+
+def repository_coverage_exact_string(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise WikiError(f"Invalid repository coverage: {label} must be a non-empty string.")
+    if value != value.strip():
+        raise WikiError(
+            f"Invalid repository coverage: {label} must not have surrounding whitespace."
+        )
+    return value
+
+
+def repository_coverage_object(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise WikiError(f"Invalid repository coverage: {label} must be a JSON object.")
+    return value
+
+
+def repository_coverage_array(value: Any, label: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise WikiError(f"Invalid repository coverage: {label} must be a JSON array.")
+    return value
+
+
+def repository_coverage_strings(
+    value: Any, label: str, *, allow_empty: bool = True
+) -> list[str]:
+    raw = repository_coverage_array(value, label)
+    if not all(isinstance(item, str) and item.strip() for item in raw):
+        raise WikiError(
+            f"Invalid repository coverage: {label} must contain only non-empty strings."
+        )
+    result = [item.strip() for item in raw]
+    if not allow_empty and not result:
+        raise WikiError(f"Invalid repository coverage: {label} must not be empty.")
+    return result
+
+
+def repository_coverage_paths(
+    value: Any, label: str, *, allow_empty: bool = True
+) -> list[str]:
+    raw = repository_coverage_array(value, label)
+    result: list[str] = []
+    for index, item in enumerate(raw):
+        path = repository_coverage_exact_string(item, f"{label}[{index}]")
+        result.append(validate_repository_relative_path(path, f"{label}[{index}]"))
+    if not allow_empty and not result:
+        raise WikiError(f"Invalid repository coverage: {label} must not be empty.")
+    return result
+
+
+def validate_repository_relative_path(value: str, label: str) -> str:
+    path = PurePosixPath(value)
+    if (
+        value != value.strip()
+        or not value
+        or path.is_absolute()
+        or ".." in path.parts
+        or not path.parts
+        or len(value.encode("utf-8")) > REPOSITORY_MAX_PATH_BYTES
+        or len(path.parts) > REPOSITORY_MAX_PATH_PARTS
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        or "\\" in value
+        or "#" in value
+        or "\x00" in value
+        or path.as_posix() != value
+    ):
+        raise WikiError(
+            f"Invalid repository coverage: {label} must be a safe repository-relative path."
+        )
+    return path.as_posix()
+
+
+def repository_origin_binds(
+    origin: str,
+    identity: str,
+    revision: str,
+    *,
+    repository_path: str | None = None,
+) -> bool:
+    """Return whether an origin names the immutable commit or selected blob."""
+    base = identity.rstrip("/")
+    if not base or not origin.startswith(base):
+        return False
+    suffix = origin[len(base) :]
+    if not suffix or suffix[0] not in "/@:#?":
+        return False
+    suffix_without_fragment = suffix.split("#", 1)[0]
+    resource = suffix_without_fragment.split("?", 1)[0].rstrip("/")
+    parsed_origin = urlparse(origin)
+    query = parse_qs(parsed_origin.query, keep_blank_values=True)
+    identity_url = urlparse(base)
+    azure_identity = bool(
+        identity_url.hostname
+        and (
+            identity_url.hostname.casefold() == "dev.azure.com"
+            or identity_url.hostname.casefold().endswith(".visualstudio.com")
+            or "/_git/" in identity_url.path
+        )
+    )
+    query_versions = {
+        unquote(value)
+        for key, values in query.items()
+        if key.casefold() in {"version", "ref"}
+        for value in values
+    }
+    if repository_path is not None:
+        local_suffix = f"@{revision}:{repository_path}"
+        if suffix_without_fragment == local_suffix:
+            return True
+        path_variants = {repository_path, quote(repository_path, safe="/")}
+        route_bound = any(
+            any(
+                re.fullmatch(pattern, resource) is not None
+                for pattern in (
+                    rf"/(?:.*?/)?(?:blob|raw|src)/(?:commit/)?"
+                    rf"{re.escape(revision)}/{re.escape(path_variant)}",
+                    rf"/(?:.*?/)?\+/{re.escape(revision)}/"
+                    rf"{re.escape(path_variant)}",
+                    rf"/(?:.*?/)?tree/{re.escape(revision)}/item/"
+                    rf"{re.escape(path_variant)}",
+                )
+            )
+            for path_variant in path_variants
+        )
+        if route_bound:
+            return True
+        query_paths = {
+            unquote(value).lstrip("/")
+            for key, values in query.items()
+            if key.casefold() == "path"
+            for value in values
+        }
+        return bool(
+            azure_identity
+            and repository_path in query_paths
+            and f"GC{revision}" in query_versions
+        )
+    if suffix_without_fragment == f"@{revision}":
+        return True
+    route_bound = re.fullmatch(
+        rf"/(?:.*?/)?(?:commit|commits|tree)/{re.escape(revision)}",
+        resource,
+    ) is not None or re.fullmatch(
+        rf"/(?:.*?/)?\+/{re.escape(revision)}",
+        resource,
+    ) is not None
+    return route_bound or bool(
+        azure_identity and f"GC{revision}" in query_versions
+    )
+
+
+def repository_captured_source_integrity(
+    root: Path, metadata: dict[str, Any]
+) -> tuple[Path | None, list[tuple[str, str]]]:
+    """Validate one non-pointer evidence envelope and return its original."""
+    errors: list[tuple[str, str]] = []
+    if metadata.get("legacy"):
+        return None, [
+            (
+                "legacy-evidence-source",
+                "Repository coverage evidence must use an immutable source.json envelope.",
+            )
+        ]
+    metadata_relative = metadata.get("_metadata_path")
+    original_relative = metadata.get("original_path")
+    if not isinstance(metadata_relative, str) or not metadata_relative.strip():
+        errors.append(
+            (
+                "evidence-source-envelope-missing",
+                "Evidence source metadata path is unavailable.",
+            )
+        )
+        return None, errors
+    if not isinstance(original_relative, str) or not original_relative.strip():
+        errors.append(
+            (
+                "evidence-source-content-missing",
+                "Non-pointer evidence source has no captured original_path.",
+            )
+        )
+        return None, errors
+    root_resolved = root.resolve()
+    lexical_original = root_resolved / Path(original_relative)
+    if has_symlink_component(lexical_original, root_resolved):
+        errors.append(
+            (
+                "evidence-source-content-unsafe",
+                "Evidence source original_path contains a symlink.",
+            )
+        )
+        return None, errors
+    try:
+        metadata_path = vault_path(
+            root, metadata_relative, label="Evidence source metadata path"
+        )
+        original_path = vault_path(
+            root, original_relative, label="Evidence source original_path"
+        )
+        original_path.relative_to((metadata_path.parent / "original").resolve())
+    except (WikiError, ValueError) as exc:
+        errors.append(("evidence-source-content-unsafe", str(exc)))
+        return None, errors
+    if not original_path.is_file():
+        errors.append(
+            (
+                "evidence-source-content-missing",
+                "Evidence source captured original is missing.",
+            )
+        )
+        return None, errors
+    expected_hash = str(metadata.get("sha256") or "")
+    try:
+        actual_hash = sha256_file(original_path)
+    except OSError as exc:
+        errors.append(
+            (
+                "evidence-source-content-unreadable",
+                f"Evidence source captured original cannot be read: {exc}",
+            )
+        )
+        return None, errors
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_hash) or actual_hash != expected_hash:
+        errors.append(
+            (
+                "evidence-source-content-hash-mismatch",
+                "Evidence source captured original does not match its SHA-256 envelope.",
+            )
+        )
+        return None, errors
+    return original_path, errors
+
+
+def repository_coverage_gap(value: Any, label: str) -> dict[str, Any]:
+    gap = repository_coverage_object(value, label)
+    gap_id = repository_coverage_string(gap.get("id"), f"{label}.id")
+    kind = repository_coverage_string(gap.get("kind"), f"{label}.kind")
+    reason = repository_coverage_string(gap.get("reason"), f"{label}.reason")
+    if not isinstance(gap.get("blocking"), bool):
+        raise WikiError(
+            f"Invalid repository coverage: {label}.blocking must be true or false."
+        )
+    return {
+        "id": gap_id,
+        "kind": kind,
+        "reason": reason,
+        "blocking": gap["blocking"],
+    }
+
+
+def resolve_repository_coverage_file(
+    root: Path, config: dict[str, Any], value: Path
+) -> Path:
+    if value.is_absolute() or ".." in value.parts or not value.parts:
+        raise WikiError(
+            "Repository coverage path must be workspace-relative and cannot contain '..'."
+        )
+    root_resolved = root.resolve()
+    lexical_path = root_resolved / value
+    if has_symlink_component(lexical_path, root_resolved):
+        raise WikiError(f"Repository coverage path cannot contain symlinks: {value}")
+    path = vault_path(root, value, label="Repository coverage path")
+    derived = rel_path(root, config, "paths", "raw_derived").resolve(strict=False)
+    try:
+        path.relative_to(derived)
+    except ValueError as exc:
+        raise WikiError(
+            "Repository coverage path must be inside the configured raw/derived directory."
+        ) from exc
+    if not path.is_file():
+        raise WikiError(f"Repository coverage file does not exist: {value}")
+    if path.stat().st_size > 16 * 1024 * 1024:
+        raise WikiError("Repository coverage file exceeds 16 MiB.")
+    return path
+
+
+def resolve_repository_coverage_page(
+    root: Path, config: dict[str, Any], value: str, label: str
+) -> Path:
+    relative = validate_repository_relative_path(value, label)
+    root_resolved = root.resolve()
+    lexical_path = root_resolved / relative
+    if has_symlink_component(lexical_path, root_resolved):
+        raise WikiError(f"Invalid repository coverage: {label} cannot contain symlinks.")
+    path = vault_path(root, relative, label=label)
+    wiki = rel_path(root, config, "paths", "wiki").resolve(strict=False)
+    try:
+        path.relative_to(wiki)
+    except ValueError as exc:
+        raise WikiError(
+            f"Invalid repository coverage: {label} must be inside the configured wiki directory."
+        ) from exc
+    return path
+
+
+def repository_page_anchor_resolves(page: Page, anchor: str) -> bool:
+    target = anchor.strip().lstrip("#").strip()
+    if not target:
+        return False
+    if target.startswith("^"):
+        return bool(
+            re.search(
+                rf"(?<![\w-]){re.escape(target)}(?![\w-])",
+                markdown_visible_text(page.body),
+            )
+        )
+    expected = heading_anchor(target)
+    visible = markdown_visible_text(page.body)
+    for match in re.finditer(r"^#{1,6}\s+(.+?)\s*#*\s*$", visible, re.MULTILINE):
+        if heading_anchor(match.group(1)) == expected:
+            return True
+    return False
+
+
+def repository_page_heading_section(
+    page: Page, anchor: str
+) -> tuple[int, int] | None:
+    """Return the unique heading section span for an Obsidian-style anchor."""
+    target = anchor.strip().lstrip("#").strip()
+    if not target or target.startswith("^"):
+        return None
+    visible = markdown_visible_text(page.body)
+    headings: list[tuple[int, str, int, int]] = []
+    for match in re.finditer(r"^(#{1,6})\s+(.+?)\s*#*\s*$", visible, re.MULTILINE):
+        headings.append(
+            (
+                len(match.group(1)),
+                heading_anchor(match.group(2)),
+                match.start(),
+                match.end(),
+            )
+        )
+    matching = [index for index, item in enumerate(headings) if item[1] == heading_anchor(target)]
+    if len(matching) != 1:
+        return None
+    index = matching[0]
+    level, _, start, _ = headings[index]
+    end = len(page.body)
+    for next_level, _, next_start, _ in headings[index + 1 :]:
+        if next_level <= level:
+            end = next_start
+            break
+    return start, end
+
+
+def repository_page_section_has_content(page: Page, anchor: str) -> bool:
+    """Return whether a heading section has visible content beyond navigation/headings."""
+    section = repository_page_heading_section(page, anchor)
+    if section is None:
+        return False
+    visible = markdown_visible_text(page.body[section[0] : section[1]])
+    visible = re.sub(r"^#{1,6}\s+.*$", "", visible, flags=re.MULTILINE)
+    visible = WIKILINK_RE.sub("", visible)
+    visible = re.sub(r"!?\[[^\]]*\]\([^)]*\)", "", visible)
+    visible = re.sub(r"<[^>]+>", "", visible)
+    visible = html.unescape(visible)
+    return any(character.isalnum() for character in visible)
+
+
+def repository_coverage_wiki_locator(
+    root: Path, config: dict[str, Any], value: Any, label: str
+) -> tuple[str, str]:
+    locator = repository_coverage_exact_string(value, label)
+    page, marker, anchor = locator.partition("#")
+    if not marker or not page or not anchor.strip():
+        raise WikiError(
+            f"Invalid repository coverage: {label} must be a wiki page plus anchor."
+        )
+    resolve_repository_coverage_page(root, config, page, label)
+    if anchor != anchor.strip():
+        raise WikiError(
+            f"Invalid repository coverage: {label} anchor must not have surrounding whitespace."
+        )
+    return page, anchor
+
+
+def repository_coverage_repository_locator(
+    value: Any,
+    revision: str,
+    label: str,
+    *,
+    require_fragment: bool,
+) -> tuple[str, str | None]:
+    locator = repository_coverage_exact_string(value, label)
+    prefix = f"repository@{revision}:"
+    if not locator.startswith(prefix):
+        raise WikiError(
+            f"Invalid repository coverage: {label} must start with {prefix!r}."
+        )
+    remainder = locator[len(prefix) :]
+    path_text, marker, fragment = remainder.partition("#")
+    path = validate_repository_relative_path(path_text, f"{label} repository path")
+    normalized_fragment = fragment if marker else ""
+    if marker and fragment != fragment.strip():
+        raise WikiError(
+            f"Invalid repository coverage: {label} locator fragment must not have "
+            "surrounding whitespace."
+        )
+    if require_fragment and not normalized_fragment:
+        raise WikiError(
+            f"Invalid repository coverage: {label} requires a path plus stable locator."
+        )
+    if normalized_fragment and not REPOSITORY_LOCATOR_FRAGMENT_RE.fullmatch(
+        normalized_fragment
+    ):
+        raise WikiError(
+            f"Invalid repository coverage: {label} has an unsafe or oversized locator fragment."
+        )
+    line_match = (
+        REPOSITORY_LINE_LOCATOR_RE.fullmatch(normalized_fragment)
+        if normalized_fragment
+        else None
+    )
+    if line_match and int(line_match.group(2) or line_match.group(1)) < int(
+        line_match.group(1)
+    ):
+        raise WikiError(
+            f"Invalid repository coverage: {label} line locator ends before it starts."
+        )
+    return path, normalized_fragment or None
+
+
+def repository_path_scopes(path: str) -> set[str]:
+    parts = PurePosixPath(path).parts
+    return {
+        PurePosixPath(*parts[:index]).as_posix()
+        for index in range(1, len(parts) + 1)
+    }
+
+
+def repository_manifest_covers_path(path: str, manifest_scopes: set[str]) -> bool:
+    return path in manifest_scopes
+
+
+def repository_paths_overlap(left: str, right: str) -> bool:
+    return (
+        left == right
+        or left.startswith(right.rstrip("/") + "/")
+        or right.startswith(left.rstrip("/") + "/")
+    )
+
+
+def command_repository_coverage(args: argparse.Namespace) -> int:
+    """Validate declared repository coverage without inspecting target repository code."""
+    root = resolve_vault(args)
+    config = load_config(root, required=True)
+    coverage_path = resolve_repository_coverage_file(root, config, args.coverage)
+    try:
+        coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, RecursionError) as exc:
+        raise WikiError(f"Invalid repository coverage JSON {coverage_path}: {exc}") from exc
+    coverage = repository_coverage_object(coverage, "root")
+    if coverage.get("kind") != "llm-wiki.repository-coverage":
+        raise WikiError(
+            "Unsupported repository coverage kind; expected "
+            "'llm-wiki.repository-coverage'."
+        )
+    if coverage.get("schema_version") != 1:
+        raise WikiError(
+            f"Unsupported repository coverage schema_version: {coverage.get('schema_version')!r}."
+        )
+
+    repository = repository_coverage_object(coverage.get("repository"), "repository")
+    repository_identity = repository_coverage_exact_string(
+        repository.get("identity"), "repository.identity"
+    )
+    revision = repository_coverage_exact_string(
+        repository.get("revision"), "repository.revision"
+    )
+    manifest_source_id = repository_coverage_string(
+        coverage.get("manifest_source_id"), "manifest_source_id"
+    )
+    home_page_relative = repository_coverage_exact_string(
+        coverage.get("home_page"), "home_page"
+    )
+    resolve_repository_coverage_page(root, config, home_page_relative, "home_page")
+    batch_state = repository_coverage_string(coverage.get("batch_state"), "batch_state")
+    if batch_state not in REPOSITORY_COVERAGE_BATCH_STATES:
+        raise WikiError(
+            "Invalid repository coverage: batch_state must be architecture-baseline, "
+            "functional-analysis-partial, or comprehensive-complete."
+        )
+
+    raw_discovery = repository_coverage_array(
+        coverage.get("discovery_records"), "discovery_records"
+    )
+    raw_discovery_gaps = repository_coverage_array(
+        coverage.get("discovery_gaps"), "discovery_gaps"
+    )
+    raw_repository_lenses = repository_coverage_array(
+        coverage.get("repository_lenses"), "repository_lenses"
+    )
+    raw_inventory = repository_coverage_array(
+        coverage.get("inventory_groups"), "inventory_groups"
+    )
+    raw_modules = repository_coverage_array(coverage.get("modules"), "modules")
+    raw_flows = repository_coverage_array(coverage.get("flows"), "flows")
+
+    findings: list[dict[str, str]] = []
+
+    def add(
+        severity: str,
+        code: str,
+        path: str,
+        message: str,
+        *,
+        category: str = "structural",
+    ) -> None:
+        findings.append(
+            {
+                "category": category,
+                "severity": severity,
+                "code": code,
+                "path": path,
+                "message": message,
+            }
+        )
+
+    module_reasons: dict[str, set[str]] = defaultdict(set)
+    if coverage_path.stem != revision:
+        add(
+            "high",
+            "coverage-revision-filename-mismatch",
+            "repository.revision",
+            "Coverage filename must equal the immutable repository revision.",
+        )
+
+    def add_module(
+        module_id: str,
+        severity: str,
+        code: str,
+        path: str,
+        message: str,
+        *,
+        category: str = "structural",
+    ) -> None:
+        add(severity, code, path, message, category=category)
+        module_reasons[module_id].add(code)
+
+    sources = source_registry(root, config, strict=True)
+    manifest_tracked_files: set[str] = set()
+    manifest_tracked_modes: dict[str, str] = {}
+    manifest_tracked_object_ids: dict[str, str] = {}
+    manifest_scopes: set[str] = set()
+    manifest_submodule_paths: set[str] = set()
+    manifest_lfs_entries: dict[str, tuple[str, bool]] = {}
+    manifest_vcs = ""
+    manifest_git_oid_length: int | None = None
+    blocking_manifest_limits = 0
+    if manifest_source_id not in sources:
+        add(
+            "high",
+            "unknown-manifest-source",
+            "manifest_source_id",
+            f"Manifest source ID does not resolve: {manifest_source_id}",
+        )
+    else:
+        manifest = sources[manifest_source_id]
+        if not isinstance(manifest.get("pointer_only"), bool):
+            add(
+                "high",
+                "manifest-source-pointer-invalid",
+                "manifest_source_id",
+                "Manifest source pointer_only must be true or false.",
+            )
+        elif manifest["pointer_only"]:
+            add(
+                "high",
+                "manifest-source-is-pointer-only",
+                "manifest_source_id",
+                "Repository manifest evidence must contain captured content.",
+            )
+        if manifest.get("source_type") != "repository-manifest":
+            add(
+                "high",
+                "manifest-source-type-mismatch",
+                "manifest_source_id",
+                "Manifest source_type must be repository-manifest.",
+            )
+        if manifest.get("adapter") not in {"git", "repository"}:
+            add(
+                "high",
+                "manifest-source-adapter-mismatch",
+                "manifest_source_id",
+                "Manifest adapter must be git or repository.",
+            )
+        if manifest.get("authority") != "agent-provenance":
+            add(
+                "high",
+                "manifest-source-authority-mismatch",
+                "manifest_source_id",
+                "Repository manifest authority must be agent-provenance.",
+            )
+        manifest_origin = str(manifest.get("origin_uri") or "")
+        manifest_external_key = str(manifest.get("external_key") or "")
+        if (
+            not repository_origin_binds(
+                manifest_origin, repository_identity, revision
+            )
+            or manifest_external_key
+            != f"{repository_identity}@{revision}:manifest"
+        ):
+            add(
+                "high",
+                "manifest-provenance-mismatch",
+                "manifest_source_id",
+                "Manifest origin and external key must exactly bind repository identity, "
+                "revision, and manifest role.",
+            )
+        original_path = manifest.get("original_path")
+        manifest_content = ""
+        if isinstance(original_path, str) and original_path.strip():
+            candidate = (root / original_path).absolute()
+            raw_sources = rel_path(root, config, "paths", "raw_sources").resolve(
+                strict=False
+            )
+            try:
+                candidate.resolve(strict=False).relative_to(raw_sources)
+            except ValueError:
+                add(
+                    "high",
+                    "manifest-content-path-unsafe",
+                    "manifest_source_id",
+                    "Manifest original_path escapes raw sources.",
+                )
+            else:
+                metadata_relative = manifest.get("_metadata_path")
+                try:
+                    metadata_path = vault_path(
+                        root,
+                        str(metadata_relative or ""),
+                        label="Manifest source metadata path",
+                    )
+                    candidate.resolve(strict=False).relative_to(
+                        (metadata_path.parent / "original").resolve(strict=False)
+                    )
+                except (WikiError, ValueError):
+                    add(
+                        "high",
+                        "manifest-content-path-unsafe",
+                        "manifest_source_id",
+                        "Manifest original_path must remain inside its immutable source envelope.",
+                    )
+                    candidate = Path()
+                if not candidate.parts:
+                    pass
+                elif has_symlink_component(candidate, root.resolve()) or not candidate.is_file():
+                    add(
+                        "high",
+                        "manifest-content-unavailable",
+                        "manifest_source_id",
+                        "Manifest captured content is missing or symlinked.",
+                    )
+                elif candidate.stat().st_size > 64 * 1024 * 1024:
+                    add(
+                        "high",
+                        "manifest-content-too-large",
+                        "manifest_source_id",
+                        "Manifest captured content exceeds 64 MiB.",
+                    )
+                else:
+                    expected_hash = str(manifest.get("sha256") or "")
+                    if not expected_hash or sha256_file(candidate) != expected_hash:
+                        add(
+                            "high",
+                            "manifest-content-hash-mismatch",
+                            "manifest_source_id",
+                            "Manifest captured content does not match its immutable envelope.",
+                        )
+                    try:
+                        manifest_content = candidate.read_text(encoding="utf-8-sig")
+                    except (OSError, UnicodeDecodeError) as exc:
+                        add(
+                            "high",
+                            "manifest-content-unreadable",
+                            "manifest_source_id",
+                            f"Manifest captured content cannot be read as UTF-8 JSON: {exc}",
+                        )
+        else:
+            add(
+                "high",
+                "manifest-content-unavailable",
+                "manifest_source_id",
+                "Manifest source has no captured original content.",
+            )
+        manifest_payload: Any = None
+        if manifest_content:
+            try:
+                manifest_payload = json.loads(manifest_content)
+            except (json.JSONDecodeError, RecursionError) as exc:
+                add(
+                    "high",
+                    "invalid-repository-manifest-json",
+                    "manifest_source_id",
+                    f"Repository manifest must be valid JSON: {exc}",
+                )
+        if not isinstance(manifest_payload, dict):
+            add(
+                "high",
+                "invalid-repository-manifest",
+                "manifest_source_id",
+                "Repository manifest must contain a JSON object.",
+            )
+        else:
+            if manifest_payload.get("kind") != "llm-wiki.repository-manifest":
+                add(
+                    "high",
+                    "repository-manifest-kind-mismatch",
+                    "manifest_source_id",
+                    "Manifest kind must be llm-wiki.repository-manifest.",
+                )
+            if manifest_payload.get("schema_version") != 1:
+                add(
+                    "high",
+                    "repository-manifest-schema-mismatch",
+                    "manifest_source_id",
+                    "Manifest schema_version must be 1.",
+                )
+            manifest_repository = manifest_payload.get("repository")
+            manifest_vcs = (
+                str(manifest_repository.get("vcs") or "").strip().casefold()
+                if isinstance(manifest_repository, dict)
+                else ""
+            )
+            if not isinstance(manifest_repository, dict) or (
+                manifest_repository.get("identity") != repository_identity
+                or manifest_repository.get("revision") != revision
+            ):
+                add(
+                    "high",
+                    "manifest-content-mismatch",
+                    "manifest_source_id",
+                    "Manifest repository identity and revision must match coverage.",
+                )
+            elif not isinstance(manifest_repository.get("vcs"), str) or not str(
+                manifest_repository["vcs"]
+            ).strip():
+                add(
+                    "high",
+                    "manifest-vcs-missing",
+                    "manifest_source_id",
+                    "Manifest repository.vcs must be a non-empty string.",
+                )
+            elif manifest_vcs == "git":
+                if not REPOSITORY_GIT_OBJECT_ID_RE.fullmatch(revision):
+                    add(
+                        "high",
+                        "mutable-git-revision",
+                        "repository.revision",
+                        "Git repository revision must be a full lowercase 40- or "
+                        "64-character object ID.",
+                    )
+                else:
+                    manifest_git_oid_length = len(revision)
+                tree_id = manifest_repository.get("tree_id")
+                if tree_id is not None and (
+                    not isinstance(tree_id, str)
+                    or not REPOSITORY_GIT_OBJECT_ID_RE.fullmatch(tree_id)
+                    or (
+                        manifest_git_oid_length is not None
+                        and len(tree_id) != manifest_git_oid_length
+                    )
+                ):
+                    add(
+                        "high",
+                        "manifest-tree-id-invalid",
+                        "manifest_source_id",
+                                "Git manifest repository.tree_id must use the same full "
+                                "lowercase object-ID format as repository.revision.",
+                    )
+            if manifest.get("adapter") == "git" and manifest_vcs != "git":
+                add(
+                    "high",
+                    "manifest-vcs-adapter-mismatch",
+                    "manifest_source_id",
+                    "A manifest captured with the git adapter must declare repository.vcs as git.",
+                )
+            for field in ("ref_context", "acquired_at", "scope"):
+                if not isinstance(manifest_payload.get(field), str) or not str(
+                    manifest_payload[field]
+                ).strip():
+                    add(
+                        "high",
+                        f"manifest-{field.replace('_', '-')}-missing",
+                        "manifest_source_id",
+                        f"Manifest {field} must be a non-empty string.",
+                    )
+            working_tree = manifest_payload.get("working_tree")
+            if not isinstance(working_tree, dict) or any(
+                not isinstance(working_tree.get(field), bool)
+                for field in ("clean", "overlay_included")
+            ):
+                add(
+                    "high",
+                    "manifest-working-tree-invalid",
+                    "manifest_source_id",
+                    "Manifest working_tree requires Boolean clean and overlay_included fields.",
+                )
+            raw_tracked_files = manifest_payload.get("tracked_files")
+            if not isinstance(raw_tracked_files, list):
+                add(
+                    "high",
+                    "manifest-tracked-files-invalid",
+                    "manifest_source_id",
+                    "Manifest tracked_files must be a JSON array.",
+                )
+            else:
+                for entry_index, raw_entry in enumerate(raw_tracked_files):
+                    entry_label = f"manifest.tracked_files[{entry_index}]"
+                    if not isinstance(raw_entry, dict):
+                        add(
+                            "high",
+                            "manifest-tracked-file-invalid",
+                            entry_label,
+                            "Tracked file entry must be a JSON object.",
+                        )
+                        continue
+                    raw_path = raw_entry.get("path")
+                    try:
+                        tracked_path = validate_repository_relative_path(
+                            repository_coverage_exact_string(
+                                raw_path, f"{entry_label}.path"
+                            ),
+                            f"{entry_label}.path",
+                        )
+                    except WikiError as exc:
+                        add(
+                            "high",
+                            "manifest-tracked-file-path-invalid",
+                            entry_label,
+                            str(exc),
+                        )
+                        continue
+                    if tracked_path in manifest_tracked_files:
+                        add(
+                            "high",
+                            "duplicate-manifest-tracked-file",
+                            entry_label,
+                            f"Manifest tracked path is duplicated: {tracked_path}",
+                        )
+                    manifest_tracked_files.add(tracked_path)
+                    manifest_scopes.update(repository_path_scopes(tracked_path))
+                    if not isinstance(raw_entry.get("object_id"), str) or not raw_entry[
+                        "object_id"
+                    ].strip():
+                        add(
+                            "high",
+                            "manifest-object-id-missing",
+                            entry_label,
+                            "Tracked file entry requires object_id or content hash.",
+                        )
+                    else:
+                        object_id = raw_entry["object_id"]
+                        if object_id != object_id.strip() or (
+                            manifest_vcs == "git"
+                            and (
+                                not REPOSITORY_GIT_OBJECT_ID_RE.fullmatch(object_id)
+                                or (
+                                    manifest_git_oid_length is not None
+                                    and len(object_id) != manifest_git_oid_length
+                                )
+                            )
+                        ):
+                            add(
+                                "high",
+                                "manifest-object-id-invalid",
+                                entry_label,
+                                "Git tracked object_id must use the repository revision's "
+                                "full lowercase object-ID format without surrounding whitespace.",
+                            )
+                        else:
+                            manifest_tracked_object_ids[tracked_path] = object_id
+                    raw_mode = raw_entry.get("mode")
+                    if not isinstance(raw_mode, str) or not raw_mode:
+                        add(
+                            "high",
+                            "manifest-file-mode-missing",
+                            entry_label,
+                            "Tracked file entry requires a non-empty mode.",
+                        )
+                    elif raw_mode != raw_mode.strip() or (
+                        manifest_vcs == "git"
+                        and raw_mode not in {"100644", "100755", "120000", "160000"}
+                    ):
+                        add(
+                            "high",
+                            "manifest-file-mode-invalid",
+                            entry_label,
+                            "Git tracked mode must be exactly 100644, 100755, 120000, "
+                            "or 160000 without surrounding whitespace.",
+                        )
+                    else:
+                        manifest_tracked_modes[tracked_path] = raw_mode
+                    if "size" in raw_entry and (
+                        type(raw_entry["size"]) is not int or raw_entry["size"] < 0
+                    ):
+                        add(
+                            "high",
+                            "manifest-file-size-invalid",
+                            entry_label,
+                            "Tracked file size must be a non-negative integer.",
+                        )
+                declared_count = manifest_payload.get("tracked_file_count")
+                if type(declared_count) is not int or declared_count != len(
+                    raw_tracked_files
+                ):
+                    add(
+                        "high",
+                        "manifest-tracked-file-count-mismatch",
+                        "manifest_source_id",
+                        "tracked_file_count must equal the tracked_files array length.",
+                    )
+                if not manifest_tracked_files:
+                    add(
+                        "high",
+                        "manifest-tracked-files-empty",
+                        "manifest_source_id",
+                        "Repository manifest must enumerate tracked files.",
+                    )
+                for tracked_path in sorted(manifest_tracked_files):
+                    for ancestor in repository_path_scopes(tracked_path) - {
+                        tracked_path
+                    }:
+                        if ancestor in manifest_tracked_files:
+                            add(
+                                "high",
+                                "manifest-tracked-path-collision",
+                                "manifest_source_id",
+                                "Manifest tracked paths cannot contain both a blob or "
+                                f"gitlink and its descendant: {ancestor} and {tracked_path}",
+                            )
+
+            def manifest_collection(name: str) -> list[Any]:
+                raw_collection = manifest_payload.get(name)
+                if not isinstance(raw_collection, list):
+                    add(
+                        "high",
+                        f"manifest-{name}-invalid",
+                        "manifest_source_id",
+                        f"Manifest {name} must be a JSON array.",
+                    )
+                    return []
+                return raw_collection
+
+            def manifest_safe_path(value: Any, label: str) -> str | None:
+                if not isinstance(value, str) or not value.strip():
+                    add(
+                        "high",
+                        "manifest-collection-path-invalid",
+                        label,
+                        "Manifest collection entries require a non-empty path.",
+                    )
+                    return None
+                try:
+                    return validate_repository_relative_path(value, f"{label}.path")
+                except WikiError as exc:
+                    add(
+                        "high",
+                        "manifest-collection-path-invalid",
+                        label,
+                        str(exc),
+                    )
+                    return None
+
+            def manifest_boolean(entry: dict[str, Any], field: str, label: str) -> bool | None:
+                value = entry.get(field)
+                if not isinstance(value, bool):
+                    add(
+                        "high",
+                        "manifest-collection-boolean-invalid",
+                        label,
+                        f"Manifest {label}.{field} must be true or false.",
+                    )
+                    return None
+                return value
+
+            for entry_index, raw_entry in enumerate(manifest_collection("exclusions")):
+                entry_label = f"manifest.exclusions[{entry_index}]"
+                if not isinstance(raw_entry, dict):
+                    add(
+                        "high",
+                        "manifest-exclusion-invalid",
+                        entry_label,
+                        "Manifest exclusion must be a JSON object.",
+                    )
+                    continue
+                exclusion_path = manifest_safe_path(raw_entry.get("path"), entry_label)
+                if exclusion_path is not None and not repository_manifest_covers_path(
+                    exclusion_path, manifest_scopes
+                ):
+                    add(
+                        "high",
+                        "manifest-exclusion-path-not-tracked",
+                        entry_label,
+                        f"Manifest exclusion path is absent from tracked files: {exclusion_path}",
+                    )
+                if not isinstance(raw_entry.get("reason"), str) or not raw_entry[
+                    "reason"
+                ].strip():
+                    add(
+                        "high",
+                        "manifest-exclusion-reason-missing",
+                        entry_label,
+                        "Manifest exclusion requires a non-empty reason.",
+                    )
+                blocking = manifest_boolean(raw_entry, "blocking", entry_label)
+                if blocking:
+                    blocking_manifest_limits += 1
+                    add(
+                        "high",
+                        "blocking-manifest-exclusion",
+                        entry_label,
+                        str(raw_entry.get("reason") or "Manifest exclusion is blocking."),
+                        category="completion",
+                    )
+
+            for entry_index, raw_entry in enumerate(manifest_collection("submodules")):
+                entry_label = f"manifest.submodules[{entry_index}]"
+                if not isinstance(raw_entry, dict):
+                    add(
+                        "high",
+                        "manifest-submodule-invalid",
+                        entry_label,
+                        "Manifest submodule must be a JSON object.",
+                    )
+                    continue
+                submodule_path = manifest_safe_path(raw_entry.get("path"), entry_label)
+                if submodule_path is not None and submodule_path not in manifest_tracked_files:
+                    add(
+                        "high",
+                        "manifest-submodule-path-not-tracked",
+                        entry_label,
+                        f"Manifest submodule path is absent from tracked files: {submodule_path}",
+                    )
+                elif submodule_path is not None:
+                    if submodule_path in manifest_submodule_paths:
+                        add(
+                            "high",
+                            "duplicate-manifest-submodule-path",
+                            entry_label,
+                            f"Manifest submodule path is duplicated: {submodule_path}",
+                        )
+                    manifest_submodule_paths.add(submodule_path)
+                    if (
+                        manifest_vcs == "git"
+                        and manifest_tracked_modes.get(submodule_path) != "160000"
+                    ):
+                        add(
+                            "high",
+                            "manifest-submodule-mode-invalid",
+                            entry_label,
+                            "A Git submodule path must be a tracked gitlink with mode 160000.",
+                        )
+                if not isinstance(raw_entry.get("identity"), str) or not raw_entry[
+                    "identity"
+                ].strip():
+                    add(
+                        "high",
+                        "manifest-submodule-identity-missing",
+                        entry_label,
+                        "Manifest submodule requires a persistent repository identity.",
+                    )
+                raw_submodule_revision = raw_entry.get("revision")
+                if not isinstance(raw_submodule_revision, str) or not raw_submodule_revision:
+                    add(
+                        "high",
+                        "manifest-submodule-revision-missing",
+                        entry_label,
+                        "Manifest submodule requires an immutable revision.",
+                    )
+                elif raw_submodule_revision != raw_submodule_revision.strip() or (
+                    manifest_vcs == "git"
+                    and not REPOSITORY_GIT_OBJECT_ID_RE.fullmatch(
+                        raw_submodule_revision
+                    )
+                    or (
+                        manifest_vcs == "git"
+                        and manifest_git_oid_length is not None
+                        and len(raw_submodule_revision) != manifest_git_oid_length
+                    )
+                ):
+                    add(
+                        "high",
+                        "manifest-submodule-revision-invalid",
+                        entry_label,
+                        "Git submodule revision must be a full lowercase 40- or "
+                        "64-character object ID.",
+                    )
+                elif (
+                    manifest_vcs == "git"
+                    and submodule_path is not None
+                    and manifest_tracked_object_ids.get(submodule_path)
+                    != raw_submodule_revision
+                ):
+                    add(
+                        "high",
+                        "manifest-submodule-revision-mismatch",
+                        entry_label,
+                        "Git submodule revision must equal the tracked gitlink object_id.",
+                    )
+                available = manifest_boolean(raw_entry, "available", entry_label)
+                blocking = manifest_boolean(raw_entry, "blocking", entry_label)
+                if available is False and (
+                    not isinstance(raw_entry.get("reason"), str)
+                    or not raw_entry["reason"].strip()
+                ):
+                    add(
+                        "high",
+                        "manifest-submodule-reason-missing",
+                        entry_label,
+                        "An unavailable submodule requires a reason.",
+                    )
+                if blocking:
+                    blocking_manifest_limits += 1
+                    add(
+                        "high",
+                        "blocking-manifest-submodule",
+                        entry_label,
+                        str(raw_entry.get("reason") or "Submodule coverage is blocking."),
+                        category="completion",
+                    )
+
+            for gitlink_path in sorted(
+                path
+                for path, mode in manifest_tracked_modes.items()
+                if mode == "160000"
+            ):
+                if gitlink_path not in manifest_submodule_paths:
+                    add(
+                        "high",
+                        "manifest-gitlink-submodule-missing",
+                        "manifest_source_id",
+                        "Every tracked Git gitlink must have exactly one submodules entry: "
+                        f"{gitlink_path}",
+                    )
+
+            for entry_index, raw_entry in enumerate(manifest_collection("lfs")):
+                entry_label = f"manifest.lfs[{entry_index}]"
+                if not isinstance(raw_entry, dict):
+                    add(
+                        "high",
+                        "manifest-lfs-invalid",
+                        entry_label,
+                        "Manifest LFS entry must be a JSON object.",
+                    )
+                    continue
+                lfs_path = manifest_safe_path(raw_entry.get("path"), entry_label)
+                if lfs_path is not None and lfs_path not in manifest_tracked_files:
+                    add(
+                        "high",
+                        "manifest-lfs-path-not-tracked",
+                        entry_label,
+                        f"Manifest LFS path is absent from tracked files: {lfs_path}",
+                    )
+                elif lfs_path is not None and manifest_vcs == "git" and (
+                    manifest_tracked_modes.get(lfs_path) not in {"100644", "100755"}
+                ):
+                    add(
+                        "high",
+                        "manifest-lfs-mode-invalid",
+                        entry_label,
+                        "A Git LFS path must be a regular tracked blob with mode 100644 "
+                        "or 100755.",
+                    )
+                if lfs_path is not None and lfs_path in manifest_submodule_paths:
+                    add(
+                        "high",
+                        "manifest-lfs-submodule-overlap",
+                        entry_label,
+                        "A tracked path cannot be both an LFS object and a submodule gitlink.",
+                    )
+                raw_lfs_object_id = raw_entry.get("object_id")
+                lfs_object_id: str | None = None
+                if not isinstance(raw_lfs_object_id, str) or not raw_lfs_object_id:
+                    add(
+                        "high",
+                        "manifest-lfs-object-id-missing",
+                        entry_label,
+                        "Manifest LFS entry requires an object_id.",
+                    )
+                elif raw_lfs_object_id != raw_lfs_object_id.strip() or not re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", raw_lfs_object_id
+                ):
+                    add(
+                        "high",
+                        "manifest-lfs-object-id-invalid",
+                        entry_label,
+                        "Manifest LFS object_id must be sha256 followed by 64 lowercase "
+                        "hexadecimal characters.",
+                    )
+                else:
+                    lfs_object_id = raw_lfs_object_id
+                materialized = manifest_boolean(raw_entry, "materialized", entry_label)
+                if lfs_path is not None and lfs_path in manifest_lfs_entries:
+                    add(
+                        "high",
+                        "duplicate-manifest-lfs-path",
+                        entry_label,
+                        f"Manifest LFS path is duplicated: {lfs_path}",
+                    )
+                elif (
+                    lfs_path is not None
+                    and lfs_object_id is not None
+                    and materialized is not None
+                ):
+                    manifest_lfs_entries[lfs_path] = (
+                        lfs_object_id,
+                        materialized,
+                    )
+                blocking = manifest_boolean(raw_entry, "blocking", entry_label)
+                if materialized is False and (
+                    not isinstance(raw_entry.get("reason"), str)
+                    or not raw_entry["reason"].strip()
+                ):
+                    add(
+                        "high",
+                        "manifest-lfs-reason-missing",
+                        entry_label,
+                        "An unmaterialized LFS object requires a reason.",
+                    )
+                if blocking:
+                    blocking_manifest_limits += 1
+                    add(
+                        "high",
+                        "blocking-manifest-lfs",
+                        entry_label,
+                        str(raw_entry.get("reason") or "LFS coverage is blocking."),
+                        category="completion",
+                    )
+
+            manifest_limitation_ids: set[str] = set()
+            for entry_index, raw_entry in enumerate(manifest_collection("limitations")):
+                entry_label = f"manifest.limitations[{entry_index}]"
+                if not isinstance(raw_entry, dict):
+                    add(
+                        "high",
+                        "manifest-limitation-invalid",
+                        entry_label,
+                        "Manifest limitation must be a JSON object.",
+                    )
+                    continue
+                for field in ("id", "kind", "reason"):
+                    if not isinstance(raw_entry.get(field), str) or not raw_entry[
+                        field
+                    ].strip():
+                        add(
+                            "high",
+                            "manifest-limitation-field-missing",
+                            entry_label,
+                            f"Manifest limitation requires a non-empty {field}.",
+                        )
+                limitation_id = raw_entry.get("id")
+                if isinstance(limitation_id, str) and limitation_id.strip():
+                    if limitation_id in manifest_limitation_ids:
+                        add(
+                            "high",
+                            "duplicate-manifest-limitation-id",
+                            entry_label,
+                            f"Manifest limitation ID is duplicated: {limitation_id}",
+                        )
+                    manifest_limitation_ids.add(limitation_id)
+                blocking = manifest_boolean(raw_entry, "blocking", entry_label)
+                if blocking:
+                    blocking_manifest_limits += 1
+                    add(
+                        "high",
+                        "blocking-manifest-limitation",
+                        entry_label,
+                        str(raw_entry.get("reason") or "Manifest limitation is blocking."),
+                        category="completion",
+                    )
+
+    modules: dict[str, dict[str, Any]] = {}
+    module_order: list[str] = []
+    for index, raw_module in enumerate(raw_modules):
+        label = f"modules[{index}]"
+        module = repository_coverage_object(raw_module, label)
+        module_id = repository_coverage_string(module.get("id"), f"{label}.id")
+        title = repository_coverage_string(module.get("title"), f"{label}.title")
+        materiality = repository_coverage_string(
+            module.get("materiality"), f"{label}.materiality"
+        )
+        if materiality not in REPOSITORY_MODULE_MATERIALITIES:
+            raise WikiError(
+                f"Invalid repository coverage: {label}.materiality is unsupported."
+            )
+        materiality_reason = repository_coverage_string(
+            module.get("materiality_reason"), f"{label}.materiality_reason"
+        )
+        parent_id = module.get("parent_id")
+        if parent_id is not None:
+            parent_id = repository_coverage_string(parent_id, f"{label}.parent_id")
+        owner_module_id = module.get("owner_module_id")
+        if owner_module_id is not None:
+            owner_module_id = repository_coverage_string(
+                owner_module_id, f"{label}.owner_module_id"
+            )
+        paths = repository_coverage_paths(module.get("paths"), f"{label}.paths")
+        raw_page = module.get("page")
+        page_relative: str | None = None
+        if raw_page is not None or materiality != "excluded":
+            page_relative = repository_coverage_exact_string(raw_page, f"{label}.page")
+            resolve_repository_coverage_page(root, config, page_relative, f"{label}.page")
+        anchor = module.get("anchor")
+        if anchor is not None:
+            anchor = repository_coverage_string(anchor, f"{label}.anchor")
+        analysis_depth = repository_coverage_string(
+            module.get("analysis_depth"), f"{label}.analysis_depth"
+        )
+        if analysis_depth not in REPOSITORY_ANALYSIS_DEPTHS:
+            raise WikiError(
+                f"Invalid repository coverage: {label}.analysis_depth is unsupported."
+            )
+        verification = repository_coverage_object(
+            module.get("verification"), f"{label}.verification"
+        )
+        verification_status = repository_coverage_string(
+            verification.get("status"), f"{label}.verification.status"
+        )
+        if verification_status not in REPOSITORY_VERIFICATION_STATUSES:
+            raise WikiError(
+                f"Invalid repository coverage: {label}.verification.status is unsupported."
+            )
+        dossier = repository_coverage_object(module.get("dossier"), f"{label}.dossier")
+        evidence = repository_coverage_array(module.get("evidence"), f"{label}.evidence")
+        flow_ids = repository_coverage_strings(module.get("flow_ids"), f"{label}.flow_ids")
+        gaps = repository_coverage_array(module.get("gaps"), f"{label}.gaps")
+        raw_disposition = module.get("disposition")
+        disposition: dict[str, Any] | None = None
+        if raw_disposition is not None:
+            disposition = repository_coverage_object(
+                raw_disposition, f"{label}.disposition"
+            )
+            repository_coverage_string(
+                disposition.get("reason"), f"{label}.disposition.reason"
+            )
+            repository_coverage_object(
+                disposition.get("evidence"), f"{label}.disposition.evidence"
+            )
+
+        if module_id in modules:
+            add(
+                "high",
+                "duplicate-module-id",
+                label,
+                f"Module ID is duplicated: {module_id}",
+            )
+            module_reasons[module_id].add("duplicate-module-id")
+            continue
+        module_order.append(module_id)
+        modules[module_id] = {
+            "id": module_id,
+            "title": title,
+            "materiality": materiality,
+            "materiality_reason": materiality_reason,
+            "parent_id": parent_id,
+            "owner_module_id": owner_module_id,
+            "paths": paths,
+            "page": page_relative,
+            "anchor": anchor,
+            "analysis_depth": analysis_depth,
+            "verification": verification,
+            "verification_status": verification_status,
+            "dossier": dossier,
+            "evidence": evidence,
+            "flow_ids": flow_ids,
+            "gaps": gaps,
+            "disposition": disposition,
+            "label": label,
+        }
+
+    evidence_integrity_cache: dict[
+        str, tuple[Path | None, list[tuple[str, str]]]
+    ] = {}
+    evidence_line_count_cache: dict[str, int] = {}
+    evidence_git_blob_oid_cache: dict[tuple[str, str], str | None] = {}
+    reported_evidence_source_errors: set[tuple[str | None, str, str]] = set()
+
+    def validate_locator(
+        value: Any,
+        label: str,
+        *,
+        module_id: str | None = None,
+        require_class: bool,
+    ) -> tuple[str, str, str | None, str] | None:
+        entry = repository_coverage_object(value, label)
+        evidence_class: str | None = None
+        if require_class:
+            evidence_class = repository_coverage_string(entry.get("class"), f"{label}.class")
+            if evidence_class not in REPOSITORY_EVIDENCE_CLASSES:
+                raise WikiError(
+                    f"Invalid repository coverage: {label}.class is unsupported."
+                )
+        source_id = repository_coverage_string(entry.get("source_id"), f"{label}.source_id")
+        repository_path, fragment = repository_coverage_repository_locator(
+            entry.get("locator"),
+            revision,
+            f"{label}.locator",
+            require_fragment=True,
+        )
+        locator = repository_coverage_exact_string(
+            entry.get("locator"), f"{label}.locator"
+        )
+
+        def report(code: str, message: str) -> None:
+            if module_id is None:
+                add("high", code, label, message)
+            else:
+                add_module(module_id, "high", code, label, message)
+
+        if source_id not in sources:
+            report(
+                "unknown-evidence-source",
+                f"Evidence source ID does not resolve: {source_id}",
+            )
+        else:
+            metadata = sources[source_id]
+            source_type = str(metadata.get("source_type") or "")
+            adapter = str(metadata.get("adapter") or "")
+            if source_type not in {"code", "repository", "repository-archive"} or adapter not in {
+                "git",
+                "repository",
+            }:
+                report(
+                    "non-repository-evidence-source",
+                    "Coverage evidence must use a code, repository, or repository-archive "
+                    "capture with the git or repository adapter.",
+                )
+            origin_uri = str(metadata.get("origin_uri") or "")
+            if not repository_origin_binds(
+                origin_uri,
+                repository_identity,
+                revision,
+                repository_path=repository_path if source_type == "code" else None,
+            ):
+                report(
+                    "evidence-source-origin-mismatch",
+                    "Evidence source origin must bind the same repository identity and revision.",
+                )
+            raw_pointer_only = metadata.get("pointer_only")
+            if not isinstance(raw_pointer_only, bool):
+                report(
+                    "evidence-source-pointer-invalid",
+                    "Evidence source pointer_only must be true or false.",
+                )
+            pointer_only = raw_pointer_only if isinstance(raw_pointer_only, bool) else False
+            if source_type in {"code", "repository-archive"} and pointer_only:
+                report(
+                    "evidence-source-content-missing",
+                    f"A {source_type} evidence source must contain captured content.",
+                )
+            if source_type == "repository" and not pointer_only:
+                report(
+                    "repository-evidence-not-pointer",
+                    "A repository evidence source must be an immutable commit pointer; use "
+                    "code or repository-archive for captured content.",
+                )
+            external_key = str(metadata.get("external_key") or "")
+            expected_external_key = {
+                "code": f"{repository_identity}@{revision}:{repository_path}",
+                "repository": f"{repository_identity}@{revision}",
+                "repository-archive": f"{repository_identity}@{revision}:archive",
+            }.get(source_type)
+            if external_key != expected_external_key:
+                report(
+                    "evidence-source-provenance-mismatch",
+                    "Evidence source external_key must exactly bind repository identity, "
+                    "revision, source role, and cited path when applicable.",
+                )
+            if source_type in {"code", "repository-archive"} and not pointer_only:
+                if source_id not in evidence_integrity_cache:
+                    evidence_integrity_cache[source_id] = (
+                        repository_captured_source_integrity(root, metadata)
+                    )
+                original_path, integrity_errors = evidence_integrity_cache[source_id]
+                for error_code, error_message in integrity_errors:
+                    report_key = (module_id, source_id, error_code)
+                    if report_key not in reported_evidence_source_errors:
+                        report(error_code, error_message)
+                        reported_evidence_source_errors.add(report_key)
+                lfs_entry = manifest_lfs_entries.get(repository_path)
+                if source_type == "code" and manifest_vcs == "git":
+                    expected_object_id = manifest_tracked_object_ids.get(repository_path)
+                    if expected_object_id is None:
+                        report(
+                            "evidence-code-path-not-tracked-file",
+                            "A selected code capture must bind one exact tracked file.",
+                        )
+                    elif original_path is not None and not integrity_errors and (
+                        lfs_entry is None or not lfs_entry[1]
+                    ):
+                        cache_key = (source_id, expected_object_id)
+                        if cache_key not in evidence_git_blob_oid_cache:
+                            algorithm = (
+                                "sha1" if len(expected_object_id) == 40 else "sha256"
+                            )
+                            try:
+                                evidence_git_blob_oid_cache[cache_key] = git_blob_object_id(
+                                    original_path, algorithm
+                                )
+                            except (OSError, ValueError) as exc:
+                                report(
+                                    "evidence-code-blob-unreadable",
+                                    f"Git blob object ID cannot be computed: {exc}",
+                                )
+                                evidence_git_blob_oid_cache[cache_key] = None
+                        actual_object_id = evidence_git_blob_oid_cache[cache_key]
+                        if (
+                            actual_object_id is not None
+                            and actual_object_id != expected_object_id
+                        ):
+                            report(
+                                "evidence-code-blob-mismatch",
+                                "Selected code bytes do not match the manifest tracked "
+                                f"Git blob for {repository_path}.",
+                            )
+                    if (
+                        lfs_entry is not None
+                        and lfs_entry[1]
+                        and original_path is not None
+                        and not integrity_errors
+                    ):
+                        expected_lfs_hash = lfs_entry[0].removeprefix("sha256:")
+                        try:
+                            actual_lfs_hash = sha256_file(original_path)
+                        except OSError as exc:
+                            report(
+                                "evidence-code-lfs-object-unreadable",
+                                f"LFS object hash cannot be computed: {exc}",
+                            )
+                        else:
+                            if actual_lfs_hash != expected_lfs_hash:
+                                report(
+                                    "evidence-code-lfs-object-mismatch",
+                                    "Selected materialized LFS bytes do not match the "
+                                    f"manifest LFS object for {repository_path}.",
+                                )
+                line_match = (
+                    REPOSITORY_LINE_LOCATOR_RE.fullmatch(fragment or "")
+                    if source_type == "code" and original_path is not None
+                    else None
+                )
+                if line_match:
+                    if source_id not in evidence_line_count_cache:
+                        try:
+                            with original_path.open("rb") as handle:
+                                evidence_line_count_cache[source_id] = sum(1 for _ in handle)
+                        except OSError as exc:
+                            report(
+                                "evidence-source-content-unreadable",
+                                f"Evidence source line count cannot be read: {exc}",
+                            )
+                            evidence_line_count_cache[source_id] = -1
+                    end_line = int(line_match.group(2) or line_match.group(1))
+                    line_count = evidence_line_count_cache[source_id]
+                    if line_count >= 0 and end_line > line_count:
+                        report(
+                            "evidence-line-locator-out-of-bounds",
+                            f"Evidence line locator ends at {end_line}, but the captured "
+                            f"file has {line_count} lines.",
+                        )
+        if not repository_manifest_covers_path(repository_path, manifest_tracked_files):
+            report(
+                "evidence-path-not-in-manifest",
+                f"Evidence path is absent from the repository manifest: {repository_path}",
+            )
+        if (
+            require_class
+            and repository_path in manifest_submodule_paths
+            and evidence_class != "boundary"
+        ):
+            report(
+                "submodule-evidence-must-be-boundary",
+                "Parent repository evidence on a Git submodule path may use only the "
+                "boundary class.",
+            )
+        lfs_entry = manifest_lfs_entries.get(repository_path)
+        if require_class and lfs_entry is not None and not lfs_entry[1] and (
+            evidence_class != "boundary"
+        ):
+            report(
+                "unmaterialized-lfs-evidence-must-be-boundary",
+                "An unmaterialized LFS pointer cannot support parent implementation, "
+                "reachability, or verification evidence.",
+            )
+        return source_id, locator, evidence_class, repository_path
+
+    gap_ids: set[str] = set()
+    blocking_discovery_gaps = 0
+    for gap_index, raw_gap in enumerate(raw_discovery_gaps):
+        gap_label = f"discovery_gaps[{gap_index}]"
+        gap = repository_coverage_gap(raw_gap, gap_label)
+        if gap["id"] in gap_ids:
+            add(
+                "high",
+                "duplicate-gap-id",
+                gap_label,
+                f"Gap ID is duplicated: {gap['id']}",
+            )
+        gap_ids.add(gap["id"])
+        if gap["blocking"]:
+            blocking_discovery_gaps += 1
+            add(
+                "high",
+                "blocking-discovery-gap",
+                gap_label,
+                gap["reason"],
+                category="completion",
+            )
+
+    repository_lenses: dict[str, dict[str, Any]] = {}
+    for lens_index, raw_lens in enumerate(raw_repository_lenses):
+        lens_label = f"repository_lenses[{lens_index}]"
+        lens = repository_coverage_object(raw_lens, lens_label)
+        lens_id = repository_coverage_string(lens.get("id"), f"{lens_label}.id")
+        status = repository_coverage_string(
+            lens.get("status"), f"{lens_label}.status"
+        )
+        if lens_id not in REPOSITORY_LENS_IDS:
+            add(
+                "high",
+                "unknown-repository-lens",
+                lens_label,
+                f"Repository lens ID is unsupported: {lens_id}",
+            )
+        if status not in REPOSITORY_LENS_STATUSES:
+            raise WikiError(
+                f"Invalid repository coverage: {lens_label}.status is unsupported."
+            )
+        page = repository_coverage_exact_string(lens.get("page"), f"{lens_label}.page")
+        resolve_repository_coverage_page(root, config, page, f"{lens_label}.page")
+        anchor = repository_coverage_string(
+            lens.get("anchor"), f"{lens_label}.anchor"
+        )
+        lens_evidence = repository_coverage_array(
+            lens.get("evidence"), f"{lens_label}.evidence"
+        )
+        blocking = lens.get("blocking", False)
+        if not isinstance(blocking, bool):
+            raise WikiError(
+                f"Invalid repository coverage: {lens_label}.blocking must be true or false."
+            )
+        if status in {"partial", "blocked"} and "blocking" not in lens:
+            raise WikiError(
+                f"Invalid repository coverage: {lens_label}.blocking must be explicit "
+                f"when status is {status}."
+            )
+        reason = lens.get("reason")
+        if status != "covered":
+            repository_coverage_string(reason, f"{lens_label}.reason")
+        if status in {"partial", "blocked"}:
+            add(
+                "medium",
+                "repository-lens-not-covered",
+                lens_label,
+                f"Repository lens is {status}: {lens_id}",
+                category="completion",
+            )
+        if status == "covered" and not lens_evidence:
+            add(
+                "high",
+                "covered-lens-without-evidence",
+                lens_label,
+                f"Covered repository lens has no evidence: {lens_id}",
+            )
+        if status == "blocked" and not blocking:
+            add(
+                "high",
+                "blocked-lens-not-marked-blocking",
+                lens_label,
+                "A blocked repository lens must set blocking to true.",
+            )
+        if status in {"covered", "not-applicable"} and blocking:
+            add(
+                "high",
+                "complete-lens-marked-blocking",
+                lens_label,
+                f"A {status} repository lens cannot be blocking.",
+            )
+        if blocking:
+            add(
+                "high",
+                "blocking-repository-lens",
+                lens_label,
+                str(reason or f"Repository lens is blocked: {lens_id}"),
+                category="completion",
+            )
+        for evidence_index, evidence_item in enumerate(lens_evidence):
+            validate_locator(
+                evidence_item,
+                f"{lens_label}.evidence[{evidence_index}]",
+                require_class=True,
+            )
+        if lens_id in repository_lenses:
+            add(
+                "high",
+                "duplicate-repository-lens",
+                lens_label,
+                f"Repository lens ID is duplicated: {lens_id}",
+            )
+        else:
+            repository_lenses[lens_id] = {
+                "id": lens_id,
+                "status": status,
+                "page": page,
+                "anchor": anchor,
+                "source_ids": {
+                    str(item.get("source_id"))
+                    for item in lens_evidence
+                    if isinstance(item, dict)
+                    and isinstance(item.get("source_id"), str)
+                },
+                "label": lens_label,
+            }
+    for lens_id in REPOSITORY_LENS_IDS:
+        if lens_id not in repository_lenses:
+            add(
+                "high",
+                "missing-repository-lens",
+                "repository_lenses",
+                f"Repository lens is not registered: {lens_id}",
+            )
+
+    dossier_locators: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
+    material_evidence_owners: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    module_evidence_paths: dict[str, dict[str, set[str]]] = defaultdict(
+        lambda: defaultdict(set)
+    )
+    for module_id in module_order:
+        module = modules[module_id]
+        label = module["label"]
+        materiality = module["materiality"]
+        for repository_path in module["paths"]:
+            if not repository_manifest_covers_path(
+                repository_path, manifest_scopes
+            ):
+                add_module(
+                    module_id,
+                    "high",
+                    "module-path-not-in-manifest",
+                    f"{label}.paths",
+                    f"Module path is absent from the repository manifest: {repository_path}",
+                )
+            if materiality == "material" and any(
+                repository_paths_overlap(repository_path, submodule_path)
+                for submodule_path in manifest_submodule_paths
+            ):
+                add_module(
+                    module_id,
+                    "high",
+                    "material-module-owns-submodule-path",
+                    f"{label}.paths",
+                    "A parent repository material module cannot own a submodule gitlink; "
+                    "register it as a boundary-only module.",
+                )
+        if materiality == "material":
+            if module["disposition"] is not None:
+                add_module(
+                    module_id,
+                    "high",
+                    "material-module-has-disposition",
+                    f"{label}.disposition",
+                    "A material module cannot declare a non-material disposition.",
+                )
+            if module["analysis_depth"] != "behavioral":
+                add_module(
+                    module_id,
+                    "high",
+                    "material-module-not-behavioral",
+                    f"{label}.analysis_depth",
+                    "A material module requires behavioral analysis depth.",
+                    category="completion",
+                )
+            if not module["paths"]:
+                add_module(
+                    module_id,
+                    "high",
+                    "material-module-without-paths",
+                    f"{label}.paths",
+                    "A material module must identify repository paths.",
+                )
+            if not module["anchor"]:
+                add_module(
+                    module_id,
+                    "high",
+                    "material-module-without-anchor",
+                    f"{label}.anchor",
+                    "A material module requires a page anchor.",
+                    category="completion",
+                )
+        else:
+            if module["disposition"] is None:
+                add_module(
+                    module_id,
+                    "high",
+                    "non-material-disposition-missing",
+                    f"{label}.disposition",
+                    "A non-material module requires disposition reason and evidence.",
+                )
+            else:
+                validate_locator(
+                    module["disposition"]["evidence"],
+                    f"{label}.disposition.evidence",
+                    module_id=module_id,
+                    require_class=False,
+                )
+
+        if materiality == "supporting":
+            if module["analysis_depth"] == "inventory":
+                add_module(
+                    module_id,
+                    "high",
+                    "supporting-module-too-shallow",
+                    f"{label}.analysis_depth",
+                    "A supporting module requires at least surface depth.",
+                    category="completion",
+                )
+            if not module["anchor"]:
+                add_module(
+                    module_id,
+                    "high",
+                    "supporting-module-without-anchor",
+                    f"{label}.anchor",
+                    "A supporting module requires a local page anchor.",
+                    category="completion",
+                )
+        elif materiality == "boundary-only":
+            if module["analysis_depth"] == "inventory":
+                add_module(
+                    module_id,
+                    "high",
+                    "boundary-module-too-shallow",
+                    f"{label}.analysis_depth",
+                    "A boundary-only module requires at least surface depth.",
+                    category="completion",
+                )
+            if not module["anchor"]:
+                add_module(
+                    module_id,
+                    "high",
+                    "boundary-module-without-anchor",
+                    f"{label}.anchor",
+                    "A boundary-only module requires a local page anchor.",
+                    category="completion",
+                )
+
+        verification = module["verification"]
+        if module["verification_status"] in {"gap", "not-applicable"} and not (
+            isinstance(verification.get("reason"), str) and verification["reason"].strip()
+        ):
+            add_module(
+                module_id,
+                "high",
+                "verification-reason-missing",
+                f"{label}.verification",
+                "Verification gap and not-applicable statuses require a reason.",
+            )
+        if materiality == "material" and module["verification_status"] == "not-applicable":
+            add_module(
+                module_id,
+                "high",
+                "material-verification-not-applicable",
+                f"{label}.verification.status",
+                "A material module without test or contract support must use verification gap.",
+            )
+
+        dossier = module["dossier"]
+        facets = REPOSITORY_DOSSIER_FACETS if materiality == "material" else tuple(dossier)
+        for facet in facets:
+            facet_label = f"{label}.dossier.{facet}"
+            raw_facet = dossier.get(facet)
+            if facet not in REPOSITORY_DOSSIER_FACETS:
+                add_module(
+                    module_id,
+                    "high",
+                    "unknown-dossier-facet",
+                    facet_label,
+                    f"Dossier facet is unsupported: {facet}",
+                )
+                continue
+            if raw_facet is None:
+                add_module(
+                    module_id,
+                    "high",
+                    "missing-dossier-facet",
+                    facet_label,
+                    f"Dossier facet is missing: {facet}",
+                    category="completion",
+                )
+                continue
+            facet_value = repository_coverage_object(raw_facet, facet_label)
+            facet_status = repository_coverage_string(
+                facet_value.get("status"), f"{facet_label}.status"
+            )
+            if facet_status not in {"documented", "not-applicable"}:
+                raise WikiError(
+                    f"Invalid repository coverage: {facet_label}.status must be documented or not-applicable."
+                )
+            if facet_status == "documented":
+                page_name, anchor_name = repository_coverage_wiki_locator(
+                    root, config, facet_value.get("locator"), f"{facet_label}.locator"
+                )
+                dossier_locators[module_id].append((facet, page_name, anchor_name))
+            else:
+                repository_coverage_string(
+                    facet_value.get("reason"), f"{facet_label}.reason"
+                )
+                if materiality == "material" and facet in REPOSITORY_REQUIRED_DOSSIER_FACETS:
+                    add_module(
+                        module_id,
+                        "high",
+                        "required-dossier-facet-not-documented",
+                        facet_label,
+                        f"Material dossier facet must be documented: {facet}",
+                        category="completion",
+                    )
+
+        evidence_classes: set[str] = set()
+        locator_classes: dict[tuple[str, str], set[str]] = defaultdict(set)
+        for evidence_index, evidence in enumerate(module["evidence"]):
+            validated = validate_locator(
+                evidence,
+                f"{label}.evidence[{evidence_index}]",
+                module_id=module_id,
+                require_class=True,
+            )
+            if validated and validated[2]:
+                evidence_classes.add(validated[2])
+                module_evidence_paths[module_id][validated[2]].add(validated[3])
+                locator_classes[(validated[0], validated[1])].add(validated[2])
+                if materiality == "material" and validated[2] in {
+                    "reachability",
+                    "implementation",
+                }:
+                    material_evidence_owners[
+                        (validated[2], validated[0], validated[1])
+                    ].add(module_id)
+        required_classes: set[str] = set()
+        if materiality == "material":
+            required_classes = {"reachability", "implementation", "boundary"}
+        elif materiality == "supporting":
+            required_classes = {"reachability", "boundary"}
+        elif materiality == "boundary-only":
+            required_classes = {"boundary"}
+        if module["verification_status"] in {"test-supported", "contract-supported"}:
+            required_classes.add("verification")
+        missing_classes = required_classes - evidence_classes
+        if missing_classes:
+            add_module(
+                module_id,
+                "high",
+                "missing-module-evidence-classes",
+                f"{label}.evidence",
+                f"{materiality} module is missing evidence classes: "
+                + ", ".join(sorted(missing_classes)),
+                category="completion",
+            )
+        path_bound_class = {
+            "material": "implementation",
+            "supporting": "boundary",
+            "boundary-only": "boundary",
+        }.get(materiality)
+        if path_bound_class and path_bound_class in evidence_classes and not any(
+            repository_paths_overlap(evidence_path, module_path)
+            for evidence_path in module_evidence_paths[module_id][path_bound_class]
+            for module_path in module["paths"]
+        ):
+            add_module(
+                module_id,
+                "high",
+                "module-evidence-path-mismatch",
+                f"{label}.evidence",
+                f"{path_bound_class} evidence does not resolve within the module paths.",
+            )
+        for locator_key, classes in locator_classes.items():
+            reused_required_classes = classes & required_classes
+            if len(reused_required_classes) > 1:
+                add_module(
+                    module_id,
+                    "high",
+                    "reused-required-evidence-locator",
+                    f"{label}.evidence",
+                    "One evidence locator is reused for required classes: "
+                    + ", ".join(sorted(reused_required_classes))
+                    + f" ({locator_key[0]} {locator_key[1]})",
+                    category="completion",
+                )
+
+        for gap_index, raw_gap in enumerate(module["gaps"]):
+            gap_label = f"{label}.gaps[{gap_index}]"
+            gap = repository_coverage_gap(raw_gap, gap_label)
+            if gap["id"] in gap_ids:
+                add_module(
+                    module_id,
+                    "high",
+                    "duplicate-gap-id",
+                    gap_label,
+                    f"Gap ID is duplicated: {gap['id']}",
+                )
+            gap_ids.add(gap["id"])
+            if gap["blocking"]:
+                add_module(
+                    module_id,
+                    "high",
+                    "blocking-module-gap",
+                    gap_label,
+                    gap["reason"],
+                    category="completion",
+                )
+
+    for (evidence_class, source_id, locator), owner_ids in material_evidence_owners.items():
+        if len(owner_ids) < 2:
+            continue
+        for module_id in sorted(owner_ids):
+            add_module(
+                module_id,
+                "high",
+                "material-evidence-reused-across-modules",
+                modules[module_id]["label"],
+                f"Material {evidence_class} evidence is shared by multiple modules: "
+                f"{source_id} {locator}",
+            )
+
+    submodule_paths_by_boundary_module: dict[str, set[str]] = defaultdict(set)
+    submodule_boundary_module_by_path: dict[str, str] = {}
+    for submodule_path in sorted(manifest_submodule_paths):
+        matching_boundary_modules = [
+            module_id
+            for module_id in module_order
+            if modules[module_id]["materiality"] == "boundary-only"
+            and submodule_path in modules[module_id]["paths"]
+            and submodule_path in module_evidence_paths[module_id]["boundary"]
+        ]
+        if not matching_boundary_modules:
+            add(
+                "high",
+                "submodule-boundary-module-missing",
+                "modules",
+                "Each manifest submodule requires its own boundary-only module row with "
+                f"boundary evidence on the parent gitlink path: {submodule_path}",
+            )
+        elif len(matching_boundary_modules) > 1:
+            add(
+                "high",
+                "submodule-boundary-module-duplicated",
+                "modules",
+                "A manifest submodule gitlink must map to exactly one boundary-only "
+                f"module row: {submodule_path}",
+            )
+        else:
+            submodule_boundary_module_by_path[submodule_path] = (
+                matching_boundary_modules[0]
+            )
+        for module_id in matching_boundary_modules:
+            submodule_paths_by_boundary_module[module_id].add(submodule_path)
+    for module_id, submodule_paths in submodule_paths_by_boundary_module.items():
+        if len(submodule_paths) > 1:
+            add_module(
+                module_id,
+                "high",
+                "submodule-boundary-module-aggregated",
+                modules[module_id]["label"],
+                "Each boundary-only module row may represent only one manifest "
+                "submodule gitlink: " + ", ".join(sorted(submodule_paths)),
+            )
+
+    module_anchor_owners: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for module_id in module_order:
+        module = modules[module_id]
+        if module["page"] is None or not module["anchor"]:
+            continue
+        normalized_anchor = heading_anchor(module["anchor"].lstrip("#"))
+        module_anchor_owners[(module["page"], normalized_anchor)].append(module_id)
+    for (page_name, anchor_name), owner_ids in module_anchor_owners.items():
+        if len(owner_ids) < 2:
+            continue
+        for module_id in owner_ids:
+            add_module(
+                module_id,
+                "high",
+                "duplicate-module-page-anchor",
+                modules[module_id]["label"],
+                "Module page anchor is shared by multiple module rows: "
+                f"{page_name}#{anchor_name}",
+            )
+
+    discovery_ids: set[str] = set()
+    discovery_keys: set[tuple[str, str]] = set()
+    discovered_modules: set[str] = set()
+    unmapped_candidates = 0
+    for index, raw_record in enumerate(raw_discovery):
+        label = f"discovery_records[{index}]"
+        record = repository_coverage_object(raw_record, label)
+        record_id = repository_coverage_string(record.get("id"), f"{label}.id")
+        kind = repository_coverage_string(record.get("kind"), f"{label}.kind")
+        repository_path, _ = repository_coverage_repository_locator(
+            record.get("locator"),
+            revision,
+            f"{label}.locator",
+            require_fragment=False,
+        )
+        locator = repository_coverage_exact_string(
+            record.get("locator"), f"{label}.locator"
+        )
+        if record_id in discovery_ids:
+            add("high", "duplicate-discovery-id", label, f"Duplicate discovery ID: {record_id}")
+        discovery_ids.add(record_id)
+        discovery_key = (kind, locator)
+        if discovery_key in discovery_keys:
+            add(
+                "medium",
+                "duplicate-discovery-locator",
+                label,
+                f"Discovery kind and locator are duplicated: {kind} {locator}",
+            )
+        discovery_keys.add(discovery_key)
+        module_id = record.get("module_id")
+        disposition = record.get("disposition")
+        reason = record.get("reason")
+        has_module = isinstance(module_id, str) and bool(module_id.strip())
+        has_disposition = isinstance(disposition, str) and bool(disposition.strip())
+        has_reason = isinstance(reason, str) and bool(reason.strip())
+        if has_disposition and disposition.strip() not in REPOSITORY_DIRECT_DISPOSITIONS:
+            raise WikiError(
+                f"Invalid repository coverage: {label}.disposition is unsupported."
+            )
+        if has_module and has_disposition:
+            unmapped_candidates += 1
+            add(
+                "high",
+                "ambiguous-discovery-mapping",
+                label,
+                "Discovery record must use module_id or disposition, not both.",
+            )
+        elif has_module:
+            normalized = module_id.strip()
+            if normalized not in modules:
+                unmapped_candidates += 1
+                add(
+                    "high",
+                    "unknown-discovery-module",
+                    label,
+                    f"Discovery record references unknown module: {normalized}",
+                )
+            else:
+                discovered_modules.add(normalized)
+        elif not (has_disposition and has_reason):
+            unmapped_candidates += 1
+            add(
+                "high",
+                "unmapped-discovery-record",
+                label,
+                "Discovery record requires module_id or explicit disposition and reason.",
+            )
+        if not repository_manifest_covers_path(
+            repository_path, manifest_scopes
+        ):
+            add(
+                "high",
+                "discovery-path-not-in-manifest",
+                label,
+                f"Discovery path is absent from the repository manifest: {repository_path}",
+            )
+
+    inventory_ids: set[str] = set()
+    inventoried_modules: set[str] = set()
+    inventory_paths_by_module: dict[str, set[str]] = defaultdict(set)
+    declared_inventory_paths: set[str] = set()
+    inventory_modules_by_scope: dict[str, set[str]] = defaultdict(set)
+    inventory_dispositions_by_scope: dict[str, set[str]] = defaultdict(set)
+    for index, raw_group in enumerate(raw_inventory):
+        label = f"inventory_groups[{index}]"
+        group = repository_coverage_object(raw_group, label)
+        group_id = repository_coverage_string(group.get("id"), f"{label}.id")
+        paths = repository_coverage_paths(
+            group.get("paths"), f"{label}.paths", allow_empty=False
+        )
+        for path_index, path in enumerate(paths):
+            declared_inventory_paths.add(path)
+            if not repository_manifest_covers_path(path, manifest_scopes):
+                add(
+                    "high",
+                    "inventory-path-not-in-manifest",
+                    f"{label}.paths[{path_index}]",
+                    f"Inventory path is absent from the repository manifest: {path}",
+                )
+        if group_id in inventory_ids:
+            add("high", "duplicate-inventory-id", label, f"Duplicate inventory ID: {group_id}")
+        inventory_ids.add(group_id)
+        raw_module_ids = group.get("module_ids")
+        module_ids = (
+            repository_coverage_strings(raw_module_ids, f"{label}.module_ids")
+            if raw_module_ids is not None
+            else []
+        )
+        disposition = group.get("disposition")
+        reason = group.get("reason")
+        has_disposition = isinstance(disposition, str) and bool(disposition.strip())
+        has_reason = isinstance(reason, str) and bool(reason.strip())
+        if has_disposition and disposition.strip() not in REPOSITORY_DIRECT_DISPOSITIONS:
+            raise WikiError(
+                f"Invalid repository coverage: {label}.disposition is unsupported."
+            )
+        if module_ids and has_disposition:
+            add(
+                "high",
+                "ambiguous-inventory-mapping",
+                label,
+                "Inventory group must use module_ids or disposition, not both.",
+            )
+        elif module_ids:
+            for module_id in module_ids:
+                inventoried_modules.add(module_id)
+                inventory_paths_by_module[module_id].update(paths)
+                if module_id not in modules:
+                    add(
+                        "high",
+                        "unknown-inventory-module",
+                        label,
+                        f"Inventory group references unknown module: {module_id}",
+                    )
+            for path in paths:
+                inventory_modules_by_scope[path].update(module_ids)
+        elif not (has_disposition and has_reason):
+            add(
+                "high",
+                "unmapped-inventory-group",
+                label,
+                "Inventory group requires module_ids or explicit disposition and reason.",
+            )
+        else:
+            for path in paths:
+                inventory_dispositions_by_scope[path].add(disposition.strip())
+
+    for tracked_path in sorted(manifest_tracked_files):
+        tracked_scopes = repository_path_scopes(tracked_path)
+        if not (tracked_scopes & declared_inventory_paths):
+            add(
+                "high",
+                "manifest-file-not-in-inventory",
+                "inventory_groups",
+                f"Tracked manifest file is absent from inventory groups: {tracked_path}",
+            )
+            continue
+        tracked_modules: set[str] = set()
+        tracked_dispositions: set[str] = set()
+        for scope in tracked_scopes:
+            tracked_modules.update(inventory_modules_by_scope.get(scope, set()))
+            tracked_dispositions.update(
+                inventory_dispositions_by_scope.get(scope, set())
+            )
+        if tracked_modules and tracked_dispositions:
+            add(
+                "high",
+                "conflicting-inventory-assignment",
+                "inventory_groups",
+                "Tracked file is assigned both to modules and to a direct disposition: "
+                f"{tracked_path}",
+            )
+        if len(tracked_dispositions) > 1:
+            add(
+                "high",
+                "conflicting-inventory-dispositions",
+                "inventory_groups",
+                "Tracked file has incompatible direct dispositions "
+                f"{', '.join(sorted(tracked_dispositions))}: {tracked_path}",
+            )
+
+    for submodule_path, boundary_module_id in sorted(
+        submodule_boundary_module_by_path.items()
+    ):
+        assigned_modules: set[str] = set()
+        for scope in repository_path_scopes(submodule_path):
+            assigned_modules.update(inventory_modules_by_scope.get(scope, set()))
+        if assigned_modules != {boundary_module_id}:
+            add(
+                "high",
+                "submodule-inventory-not-boundary-only",
+                "inventory_groups",
+                "A submodule gitlink inventory assignment must map only to its unique "
+                f"boundary module {boundary_module_id}: {submodule_path}",
+            )
+
+    for module_id in module_order:
+        if module_id not in discovered_modules:
+            add_module(
+                module_id,
+                "high",
+                "module-not-discovered",
+                modules[module_id]["label"],
+                "Module is not mapped from any discovery record.",
+            )
+        if (
+            modules[module_id]["materiality"] == "material"
+            and module_id not in inventoried_modules
+        ):
+            add_module(
+                module_id,
+                "high",
+                "material-module-not-inventory-mapped",
+                modules[module_id]["label"],
+                "Material module is not mapped from any inventory group.",
+            )
+        elif modules[module_id]["materiality"] == "material":
+            module_paths = modules[module_id]["paths"]
+            inventory_paths = inventory_paths_by_module[module_id]
+            if not all(
+                any(
+                    repository_paths_overlap(module_path, inventory_path)
+                    for inventory_path in inventory_paths
+                )
+                for module_path in module_paths
+            ):
+                add_module(
+                    module_id,
+                    "high",
+                    "material-module-inventory-path-mismatch",
+                    modules[module_id]["label"],
+                    "Material module paths are not covered by its mapped inventory groups.",
+                )
+
+    flows: dict[str, dict[str, Any]] = {}
+    flow_order: list[str] = []
+    step_flow_ids_by_module: dict[str, set[str]] = defaultdict(set)
+    behavioral_step_flow_ids_by_module: dict[str, set[str]] = defaultdict(set)
+    for index, raw_flow in enumerate(raw_flows):
+        label = f"flows[{index}]"
+        flow = repository_coverage_object(raw_flow, label)
+        flow_id = repository_coverage_string(flow.get("id"), f"{label}.id")
+        module_ids = repository_coverage_strings(
+            flow.get("module_ids"), f"{label}.module_ids", allow_empty=False
+        )
+        flow_page = repository_coverage_exact_string(flow.get("page"), f"{label}.page")
+        resolve_repository_coverage_page(root, config, flow_page, f"{label}.page")
+        flow_anchor = repository_coverage_string(
+            flow.get("anchor"), f"{label}.anchor"
+        )
+        steps = repository_coverage_array(flow.get("steps"), f"{label}.steps")
+        if not steps:
+            raise WikiError(f"Invalid repository coverage: {label}.steps must not be empty.")
+        if flow_id in flows:
+            add("high", "duplicate-flow-id", label, f"Duplicate flow ID: {flow_id}")
+            continue
+        flow_order.append(flow_id)
+        flows[flow_id] = {
+            "id": flow_id,
+            "module_ids": module_ids,
+            "page": flow_page,
+            "anchor": flow_anchor,
+            "steps": steps,
+            "source_ids": set(),
+            "label": label,
+        }
+        flow_stages: set[str] = set()
+        for module_id in module_ids:
+            if module_id not in modules:
+                add(
+                    "high",
+                    "unknown-flow-module",
+                    f"{label}.module_ids",
+                    f"Flow references unknown module: {module_id}",
+                )
+        for step_index, raw_step in enumerate(steps):
+            step_label = f"{label}.steps[{step_index}]"
+            step = repository_coverage_object(raw_step, step_label)
+            stage = repository_coverage_string(step.get("stage"), f"{step_label}.stage")
+            if stage not in REPOSITORY_FLOW_STAGES:
+                raise WikiError(
+                    f"Invalid repository coverage: {step_label}.stage is unsupported."
+                )
+            flow_stages.add(stage)
+            repository_coverage_string(step.get("description"), f"{step_label}.description")
+            step_module_ids = repository_coverage_strings(
+                step.get("module_ids"), f"{step_label}.module_ids", allow_empty=False
+            )
+            step_evidence = repository_coverage_array(
+                step.get("evidence"), f"{step_label}.evidence"
+            )
+            if not step_evidence:
+                raise WikiError(
+                    f"Invalid repository coverage: {step_label}.evidence must not be empty."
+                )
+            for module_id in step_module_ids:
+                if module_id not in modules:
+                    add(
+                        "high",
+                        "unknown-flow-step-module",
+                        step_label,
+                        f"Flow step references unknown module: {module_id}",
+                    )
+                    continue
+                step_flow_ids_by_module[module_id].add(flow_id)
+                if stage in {
+                    "orchestration",
+                    "domain-decision",
+                    "state-interface-boundary",
+                }:
+                    behavioral_step_flow_ids_by_module[module_id].add(flow_id)
+                if module_id not in module_ids:
+                    add(
+                        "high",
+                        "flow-step-module-not-declared",
+                        step_label,
+                        f"Flow step module is absent from flow.module_ids: {module_id}",
+                    )
+            for evidence_index, evidence in enumerate(step_evidence):
+                validated = validate_locator(
+                    evidence,
+                    f"{step_label}.evidence[{evidence_index}]",
+                    require_class=True,
+                )
+                if validated:
+                    flows[flow_id]["source_ids"].add(validated[0])
+        missing_stages = set(REPOSITORY_FLOW_STAGES) - flow_stages
+        if missing_stages:
+            add(
+                "high",
+                "incomplete-end-to-end-flow",
+                label,
+                "Flow is missing semantic stages: " + ", ".join(sorted(missing_stages)),
+                category="completion",
+            )
+
+    flow_anchor_owners: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for flow_id in flow_order:
+        flow = flows[flow_id]
+        flow_anchor_owners[
+            (flow["page"], heading_anchor(flow["anchor"].lstrip("#")))
+        ].append(flow_id)
+    for (page_name, anchor_name), flow_ids in flow_anchor_owners.items():
+        if len(flow_ids) > 1:
+            add(
+                "high",
+                "duplicate-flow-page-anchor",
+                "flows",
+                "Flow page anchor is shared by multiple flows: "
+                f"{page_name}#{anchor_name} ({', '.join(sorted(flow_ids))})",
+            )
+
+    for module_id in module_order:
+        module = modules[module_id]
+        label = module["label"]
+        declared_flows = set(module["flow_ids"])
+        actual_flows = step_flow_ids_by_module.get(module_id, set())
+        for flow_id in sorted(declared_flows):
+            if flow_id not in flows:
+                add_module(
+                    module_id,
+                    "high",
+                    "unknown-module-flow",
+                    f"{label}.flow_ids",
+                    f"Module references unknown flow: {flow_id}",
+                )
+            elif flow_id not in actual_flows:
+                add_module(
+                    module_id,
+                    "high",
+                    "declared-flow-without-module-step",
+                    f"{label}.flow_ids",
+                    f"Module declares flow but participates in no step: {flow_id}",
+                )
+        for flow_id in sorted(actual_flows - declared_flows):
+            add_module(
+                module_id,
+                "high",
+                "undeclared-module-flow-step",
+                label,
+                f"Module participates in flow step without declaring flow_id: {flow_id}",
+            )
+        if module["materiality"] == "material" and not actual_flows:
+            add_module(
+                module_id,
+                "high",
+                "material-module-without-flow-step",
+                label,
+                "A material module must participate in at least one flow step.",
+                category="completion",
+            )
+        elif (
+            module["materiality"] == "material"
+            and not behavioral_step_flow_ids_by_module.get(module_id)
+        ):
+            add_module(
+                module_id,
+                "high",
+                "material-module-without-behavioral-flow-step",
+                label,
+                "A material module must participate in orchestration, domain-decision, "
+                "or state-interface-boundary within a declared flow.",
+                category="completion",
+            )
+
+    children: dict[str, list[str]] = defaultdict(list)
+    for module_id in module_order:
+        parent_id = modules[module_id]["parent_id"]
+        if parent_id is None:
+            continue
+        if parent_id not in modules:
+            add_module(
+                module_id,
+                "high",
+                "unknown-module-parent",
+                f"{modules[module_id]['label']}.parent_id",
+                f"Module references unknown parent: {parent_id}",
+            )
+            continue
+        children[parent_id].append(module_id)
+
+    for module_id in module_order:
+        module = modules[module_id]
+        if module["materiality"] != "supporting":
+            continue
+        owner_module_id = module["owner_module_id"]
+        if owner_module_id is None:
+            add_module(
+                module_id,
+                "high",
+                "supporting-module-without-owner",
+                f"{module['label']}.owner_module_id",
+                "A supporting module requires owner_module_id.",
+            )
+        elif owner_module_id not in modules:
+            add_module(
+                module_id,
+                "high",
+                "unknown-supporting-module-owner",
+                f"{module['label']}.owner_module_id",
+                f"Supporting owner is unknown: {owner_module_id}",
+            )
+        elif modules[owner_module_id]["materiality"] != "material":
+            add_module(
+                module_id,
+                "high",
+                "supporting-module-owner-not-material",
+                f"{module['label']}.owner_module_id",
+                "A supporting module owner must be material.",
+            )
+
+    parent_graph_processed: set[str] = set()
+    for start_id in module_order:
+        if start_id in parent_graph_processed:
+            continue
+        trail: list[str] = []
+        positions: dict[str, int] = {}
+        current_id: str | None = start_id
+        while (
+            current_id in modules
+            and current_id not in parent_graph_processed
+            and current_id not in positions
+        ):
+            positions[current_id] = len(trail)
+            trail.append(current_id)
+            current_id = modules[current_id]["parent_id"]
+        if current_id in positions:
+            for cycle_id in trail[positions[current_id] :]:
+                add_module(
+                    cycle_id,
+                    "high",
+                    "module-parent-cycle",
+                    modules[cycle_id]["label"],
+                    "Module parent relationship contains a cycle.",
+                )
+        parent_graph_processed.update(trail)
+
+    pages = iter_pages(root, config, reject_symlinks=True)
+    page_by_relative = {page.relative: page for page in pages}
+    broad, _ = page_maps(pages, root, config)
+    home_page = page_by_relative.get(home_page_relative)
+    if home_page is None:
+        add(
+            "high",
+            "missing-repository-home-page",
+            home_page_relative,
+            "Repository home page does not exist.",
+        )
+    outbound_pages: dict[str, set[str]] = defaultdict(set)
+    for page in pages:
+        for target in page.links:
+            matches = {match.path: match for match in resolve_link(broad, target)}
+            if len(matches) == 1:
+                outbound_pages[page.relative].add(next(iter(matches.values())).relative)
+    reachable_pages: set[str] = set()
+    if home_page is not None:
+        pending = [home_page.relative]
+        while pending:
+            page_relative = pending.pop()
+            if page_relative in reachable_pages:
+                continue
+            reachable_pages.add(page_relative)
+            pending.extend(outbound_pages.get(page_relative, set()))
+
+    for lens in repository_lenses.values():
+        lens_page = page_by_relative.get(lens["page"])
+        if lens_page is None:
+            add(
+                "high",
+                "missing-repository-lens-page",
+                lens["label"],
+                f"Repository lens page does not exist: {lens['page']}",
+            )
+            continue
+        if lens["page"] not in reachable_pages:
+            add(
+                "high",
+                "repository-lens-page-unreachable",
+                lens["label"],
+                f"Repository lens page is unreachable: {lens['page']}",
+            )
+        lens_section = repository_page_heading_section(lens_page, lens["anchor"])
+        if lens_section is None:
+            add(
+                "high",
+                "missing-repository-lens-anchor",
+                lens["label"],
+                f"Repository lens anchor must resolve to one unique heading: {lens['anchor']}",
+            )
+        elif lens["status"] == "covered" and not repository_page_section_has_content(
+            lens_page, lens["anchor"]
+        ):
+            add(
+                "high",
+                "repository-lens-section-empty",
+                lens["label"],
+                "A covered repository lens section requires visible substantive content.",
+            )
+        if (
+            home_page is not None
+            and lens["page"] != home_page.relative
+            and home_page.relative not in outbound_pages.get(lens["page"], set())
+        ):
+            add(
+                "high",
+                "repository-lens-page-missing-home-backlink",
+                lens["label"],
+                "A standalone repository lens page must link back to repository home.",
+            )
+        missing_lens_sources = lens["source_ids"] - set(
+            as_list(lens_page.metadata.get("sources"))
+        )
+        if missing_lens_sources:
+            add(
+                "high",
+                "repository-lens-page-missing-sources",
+                lens["label"],
+                "Repository lens page frontmatter omits evidence source IDs: "
+                + ", ".join(sorted(missing_lens_sources)),
+            )
+
+    for flow_id in flow_order:
+        flow = flows[flow_id]
+        flow_page = page_by_relative.get(flow["page"])
+        if flow_page is None:
+            add(
+                "high",
+                "missing-flow-page",
+                flow["label"],
+                f"Flow page does not exist: {flow['page']}",
+            )
+            continue
+        if flow["page"] not in reachable_pages:
+            add(
+                "high",
+                "flow-page-unreachable-from-home",
+                flow["label"],
+                f"Flow page is unreachable: {flow['page']}",
+            )
+        flow_section = repository_page_heading_section(flow_page, flow["anchor"])
+        if flow_section is None:
+            add(
+                "high",
+                "missing-flow-anchor",
+                flow["label"],
+                f"Flow anchor must resolve to one unique heading: {flow['anchor']}",
+            )
+        elif not repository_page_section_has_content(flow_page, flow["anchor"]):
+            add(
+                "high",
+                "flow-section-empty",
+                flow["label"],
+                "A flow section requires visible substantive content.",
+            )
+        missing_flow_sources = flow["source_ids"] - set(
+            as_list(flow_page.metadata.get("sources"))
+        )
+        if missing_flow_sources:
+            add(
+                "high",
+                "flow-page-missing-sources",
+                flow["label"],
+                "Flow page frontmatter omits evidence source IDs: "
+                + ", ".join(sorted(missing_flow_sources)),
+            )
+        owner_pages = {
+            modules[module_id]["page"]
+            for module_id in flow["module_ids"]
+            if module_id in modules and modules[module_id]["page"] is not None
+        }
+        for owner_page in sorted(owner_pages):
+            if (
+                flow["page"] != owner_page
+                and owner_page not in outbound_pages.get(flow["page"], set())
+            ):
+                add(
+                    "high",
+                    "flow-page-missing-module-backlink",
+                    flow["label"],
+                    f"Flow page must link to participating module page: {owner_page}",
+                )
+
+    for module_id in module_order:
+        module = modules[module_id]
+        label = module["label"]
+        if module["page"] is None and module["materiality"] == "excluded":
+            continue
+        page = page_by_relative.get(module["page"])
+        if page is None:
+            add_module(
+                module_id,
+                "high",
+                "missing-module-page",
+                module["page"],
+                "Module page does not exist.",
+            )
+            continue
+        if module["page"] not in reachable_pages:
+            add_module(
+                module_id,
+                "high",
+                "module-page-unreachable-from-home",
+                module["page"],
+                "Module page is not reachable from home through wikilinks.",
+            )
+        if module["anchor"] and not repository_page_anchor_resolves(page, module["anchor"]):
+            add_module(
+                module_id,
+                "high",
+                "missing-module-anchor",
+                module["page"],
+                f"Module anchor does not resolve: {module['anchor']}",
+            )
+        elif module["anchor"] and repository_page_heading_section(page, module["anchor"]) is None:
+            add_module(
+                module_id,
+                "high",
+                "module-anchor-not-unique-heading",
+                module["page"],
+                "Module anchor must resolve to one unique heading section.",
+            )
+        owner_id = module["parent_id"]
+        if module["materiality"] == "supporting":
+            owner_id = module["owner_module_id"]
+        owner_page = home_page_relative
+        if owner_id in modules and modules[owner_id]["page"] is not None:
+            owner_page = modules[owner_id]["page"]
+        if (
+            module["page"] != owner_page
+            and owner_page not in outbound_pages.get(module["page"], set())
+        ):
+            add_module(
+                module_id,
+                "high",
+                "module-page-missing-owner-backlink",
+                module["page"],
+                f"Module page must link back to its owning page: {owner_page}",
+            )
+        page_sources = set(as_list(page.metadata.get("sources")))
+        module_source_ids = {
+            str(item.get("source_id"))
+            for item in module["evidence"]
+            if isinstance(item, dict) and isinstance(item.get("source_id"), str)
+        }
+        disposition = module["disposition"]
+        if isinstance(disposition, dict):
+            disposition_evidence = disposition.get("evidence")
+            if isinstance(disposition_evidence, dict) and isinstance(
+                disposition_evidence.get("source_id"), str
+            ):
+                module_source_ids.add(disposition_evidence["source_id"])
+        missing_page_sources = module_source_ids - page_sources
+        if missing_page_sources:
+            add_module(
+                module_id,
+                "high",
+                "module-page-missing-sources",
+                module["page"],
+                "Module page frontmatter omits evidence source IDs: "
+                + ", ".join(sorted(missing_page_sources)),
+            )
+
+    module_heading_sections: dict[str, tuple[str, tuple[int, int]]] = {}
+    module_sections_by_page: dict[str, list[tuple[str, tuple[int, int]]]] = defaultdict(
+        list
+    )
+    for module_id in module_order:
+        module = modules[module_id]
+        if module["page"] is None or not module["anchor"]:
+            continue
+        module_page = page_by_relative.get(module["page"])
+        if module_page is None:
+            continue
+        section = repository_page_heading_section(module_page, module["anchor"])
+        if section is None:
+            continue
+        module_heading_sections[module_id] = (module["page"], section)
+        module_sections_by_page[module["page"]].append((module_id, section))
+
+    for module_id, locator_entries in dossier_locators.items():
+        module = modules[module_id]
+        for facet, page_name, anchor_name in locator_entries:
+            path = f"{module['label']}.dossier.{facet}.locator"
+            dossier_page = page_by_relative.get(page_name)
+            if dossier_page is None:
+                add_module(
+                    module_id,
+                    "high",
+                    "missing-dossier-page",
+                    path,
+                    f"Dossier locator page does not exist: {page_name}",
+                )
+                continue
+            if page_name != module["page"]:
+                add_module(
+                    module_id,
+                    "high",
+                    "dossier-page-mismatch",
+                    path,
+                    "Dossier locator must resolve on the module page.",
+                )
+            if page_name not in reachable_pages:
+                add_module(
+                    module_id,
+                    "high",
+                    "dossier-page-unreachable",
+                    path,
+                    f"Dossier locator page is unreachable: {page_name}",
+                )
+            dossier_section = repository_page_heading_section(dossier_page, anchor_name)
+            if dossier_section is None:
+                add_module(
+                    module_id,
+                    "high",
+                    "missing-dossier-anchor",
+                    path,
+                    f"Dossier locator must resolve to one unique heading: {anchor_name}",
+                )
+                continue
+            if not repository_page_section_has_content(dossier_page, anchor_name):
+                add_module(
+                    module_id,
+                    "high",
+                    "dossier-section-empty",
+                    path,
+                    "A documented dossier facet requires visible substantive content.",
+                )
+            owned_heading = module_heading_sections.get(module_id)
+            module_section = (
+                owned_heading[1]
+                if owned_heading is not None and owned_heading[0] == page_name
+                else None
+            )
+            if (
+                module_section is not None
+                and not module_section[0] <= dossier_section[0] < module_section[1]
+            ):
+                add_module(
+                    module_id,
+                    "high",
+                    "dossier-outside-module-section",
+                    path,
+                    "Dossier locator is outside the module's anchored section.",
+                )
+                continue
+            if module_section is not None:
+                nested_owners = [
+                    other_id
+                    for other_id, other_section in module_sections_by_page.get(
+                        page_name, []
+                    )
+                    if other_id != module_id
+                    and module_section[0] <= other_section[0]
+                    and other_section[1] <= module_section[1]
+                    and other_section != module_section
+                    and other_section[0] <= dossier_section[0] < other_section[1]
+                ]
+                if nested_owners:
+                    add_module(
+                        module_id,
+                        "high",
+                        "dossier-owned-by-nested-module",
+                        path,
+                        "Dossier locator resolves inside another module section: "
+                        + ", ".join(sorted(nested_owners)),
+                    )
+
+    direct_complete = {
+        module_id: not module_reasons.get(module_id)
+        for module_id in module_order
+    }
+    module_results: list[dict[str, Any]] = []
+    complete_material_modules = 0
+    material_module_ids = [
+        module_id
+        for module_id in module_order
+        if modules[module_id]["materiality"] == "material"
+    ]
+    incomplete_material_ancestors: set[str] = set()
+    for incomplete_id in material_module_ids:
+        if direct_complete[incomplete_id]:
+            continue
+        current_id = modules[incomplete_id]["parent_id"]
+        seen_ancestors: set[str] = set()
+        while current_id in modules and current_id not in seen_ancestors:
+            seen_ancestors.add(current_id)
+            if modules[current_id]["materiality"] == "material":
+                incomplete_material_ancestors.add(current_id)
+            current_id = modules[current_id]["parent_id"]
+
+    for ancestor_id in sorted(incomplete_material_ancestors):
+        add_module(
+            ancestor_id,
+            "high",
+            "incomplete-material-descendant",
+            modules[ancestor_id]["label"],
+            "Material module has an incomplete material descendant.",
+            category="completion",
+        )
+
+    for module_id in module_order:
+        module = modules[module_id]
+        complete = direct_complete[module_id]
+        if module["materiality"] == "material":
+            complete = (
+                direct_complete[module_id]
+                and module_id not in incomplete_material_ancestors
+            )
+            if complete:
+                complete_material_modules += 1
+        module_results.append(
+            {
+                "id": module_id,
+                "materiality": module["materiality"],
+                "direct_complete": direct_complete[module_id],
+                "complete": complete,
+                "reasons": sorted(module_reasons.get(module_id, set())),
+            }
+        )
+
+    if not material_module_ids:
+        add(
+            "high",
+            "no-material-modules",
+            "modules",
+            "Repository coverage declares no material modules.",
+            category="completion",
+        )
+    if batch_state != "comprehensive-complete":
+        add(
+            "medium",
+            "batch-state-partial",
+            "batch_state",
+            f"Coverage batch is explicitly partial: {batch_state}",
+            category="completion",
+        )
+
+    all_material_complete = bool(material_module_ids) and all(
+        result["complete"]
+        for result in module_results
+        if result["materiality"] == "material"
+    )
+    if batch_state == "comprehensive-complete" and (
+        not all_material_complete or findings
+    ):
+        add(
+            "high",
+            "declared-comprehensive-complete-mismatch",
+            "batch_state",
+            "batch_state declares comprehensive completion but deterministic checks are incomplete.",
+        )
+
+    order = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
+    findings.sort(
+        key=lambda item: (
+            0 if item["category"] == "structural" else 1,
+            order.get(item["severity"], 99),
+            item["code"],
+            item["path"],
+            item["message"],
+        )
+    )
+    structural_errors = [
+        item for item in findings if item["category"] == "structural"
+    ]
+    completion_findings = [
+        item for item in findings if item["category"] == "completion"
+    ]
+    counts = Counter(item["severity"] for item in findings)
+    computed_complete = (
+        batch_state == "comprehensive-complete"
+        and all_material_complete
+        and not findings
+    )
+    payload = {
+        "workspace": str(root),
+        "vault": str(root),
+        "coverage": coverage_path.relative_to(root).as_posix(),
+        "schema_version": 1,
+        "repository": {"identity": repository_identity, "revision": revision},
+        "batch_state": batch_state,
+        "semantic_checks_performed": False,
+        "computed_complete": computed_complete,
+        "summary": {
+            "candidate_records": len(raw_discovery),
+            "discovery_records": len(raw_discovery),
+            "discovery_gaps": len(raw_discovery_gaps),
+            "repository_lenses": len(repository_lenses),
+            "inventory_groups": len(raw_inventory),
+            "modules": len(raw_modules),
+            "material_modules": len(material_module_ids),
+            "behavioral": sum(
+                1
+                for module_id in material_module_ids
+                if modules[module_id]["analysis_depth"] == "behavioral"
+            ),
+            "test_supported": sum(
+                1
+                for module_id in material_module_ids
+                if modules[module_id]["analysis_depth"] == "behavioral"
+                and modules[module_id]["verification_status"] == "test-supported"
+            ),
+            "verification_gaps": sum(
+                1
+                for module_id in material_module_ids
+                if modules[module_id]["verification_status"] == "gap"
+            ),
+            "surface_only": sum(
+                1
+                for module_id in material_module_ids
+                if modules[module_id]["analysis_depth"] == "surface"
+            ),
+            "inventory_only": sum(
+                1
+                for module_id in material_module_ids
+                if modules[module_id]["analysis_depth"] == "inventory"
+            ),
+            "blocked": blocking_discovery_gaps
+            + blocking_manifest_limits
+            + sum(
+                1
+                for module_id in module_order
+                for gap in modules[module_id]["gaps"]
+                if isinstance(gap, dict) and gap.get("blocking") is True
+            )
+            + sum(
+                1
+                for lens in raw_repository_lenses
+                if isinstance(lens, dict) and lens.get("blocking") is True
+            ),
+            "unmapped_candidates": unmapped_candidates,
+            "complete_material_modules": complete_material_modules,
+            "flows": len(raw_flows),
+            "structural_errors": len(structural_errors),
+            "completion_findings": len(completion_findings),
+            "findings": len(findings),
+            "findings_by_severity": dict(sorted(counts.items())),
+            "completion": "complete" if computed_complete else "partial",
+        },
+        "module_results": sorted(module_results, key=lambda item: item["id"]),
+        "structural_errors": structural_errors,
+        "completion_findings": completion_findings,
+        "findings": findings,
+    }
+    if args.json:
+        print(json_dump(payload))
+    elif computed_complete:
+        print("OK: repository coverage is deterministically complete")
+    else:
+        for item in findings:
+            print(
+                f"{item['severity'].upper():7} {item['code']:36} "
+                f"{item['path']} — {item['message']}"
+            )
+        print(
+            "Summary: "
+            f"material={len(material_module_ids)}, "
+            f"complete={complete_material_modules}, findings={len(findings)}, "
+            "semantic_checks_performed=false"
+        )
+    if computed_complete or (args.allow_partial and not structural_errors):
+        return 0
+    return 1
+
+
 def lint_findings(root: Path, config: dict[str, Any]) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
 
@@ -3360,6 +6729,22 @@ def build_parser() -> argparse.ArgumentParser:
     lint_parser = subparsers.add_parser("lint", help="Read-only structural audit")
     lint_parser.add_argument("--strict", action="store_true", help="Return nonzero for any finding")
     lint_parser.set_defaults(func=command_lint)
+
+    coverage_parser = subparsers.add_parser(
+        "repository-coverage",
+        help="Validate deterministic repository coverage declarations",
+    )
+    coverage_parser.add_argument(
+        "coverage",
+        type=Path,
+        help="Workspace-relative coverage JSON under raw/derived",
+    )
+    coverage_parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="Allow completion findings, but never structural integrity findings",
+    )
+    coverage_parser.set_defaults(func=command_repository_coverage)
 
     rebuild_parser = subparsers.add_parser("rebuild", help="Rebuild disposable catalog/source/backlink state")
     rebuild_parser.add_argument("--force", action="store_true", help="Back up and replace unmanaged or locally modified generated targets")

@@ -6,14 +6,13 @@ Use this reference when a source is a software, infrastructure, documentation, o
 
 - [Define purpose and boundaries](#define-purpose-and-boundaries)
 - [Choose an intent mode](#choose-an-intent-mode)
-- [Build a comprehensive repository wiki](#build-a-comprehensive-repository-wiki)
+- [Route comprehensive functional analysis](#route-comprehensive-functional-analysis)
 - [Resolve immutable identity](#resolve-immutable-identity)
 - [Acquire evidence read-only](#acquire-evidence-read-only)
 - [Choose an evidence representation](#choose-an-evidence-representation)
 - [Map evidence into capture](#map-evidence-into-capture)
 - [Inventory tracked content](#inventory-tracked-content)
 - [Apply coverage lenses](#apply-coverage-lenses)
-- [Validate comprehensive coverage](#validate-comprehensive-coverage)
 - [Respect authority boundaries](#respect-authority-boundaries)
 - [Cite commit, path, and line](#cite-commit-path-and-line)
 - [Integrate with mixed sources](#integrate-with-mixed-sources)
@@ -22,7 +21,7 @@ Use this reference when a source is a software, infrastructure, documentation, o
 
 ## Define purpose and boundaries
 
-Start from the user's question, not from the repository tree. In Comprehensive repository wiki mode, the question is broad by design: explain every material concept and system boundary at one pinned revision.
+Start from the user's question, not from the repository tree. In Comprehensive repository wiki mode, the question is broad by design: explain every material concept, behavior, and system boundary at one pinned evidence set.
 
 - State which repository, ref, component, time boundary, and question are in scope.
 - Distinguish understanding a system from archiving its complete contents.
@@ -53,49 +52,13 @@ For change analysis, compare immutable endpoints. For archival work, optimize fo
 
 Choose Comprehensive repository wiki mode when the user explicitly asks for a comprehensive, complete, full, or all-around repository wiki; asks for documentation that removes the need to inspect code; or provides a repository URL or local directory and asks to ingest, document, or create a project wiki without narrowing the request to one question or subsystem. A URL or path alone is not authorization to persist anything. Use a narrower mode for read-only explanation, a focused question, one domain, a change range, or archival preservation.
 
-## Build a comprehensive repository wiki
+For a write-producing ingest, use an explicit `--workspace` target first; otherwise use the configured workspace found upward from the current directory or enclosing this installed skill. If configuration is absent but exactly one directory qualifies as the workspace candidate under `SKILL.md`, initialize that candidate incrementally before capture. The source repository never becomes the wiki workspace merely because it is the current directory. Ask the user to choose when there is no candidate or when multiple candidates are equally plausible. When no ref is supplied, use the checkout's current `HEAD` for a local repository or the advertised default branch for a remote repository, then resolve that mutable name to an immutable revision before analysis.
 
-Comprehensive means complete conceptual coverage of the material repository areas at one immutable revision. It does not mean copying every file, reading every line, archiving every byte, or creating one page per file or directory. Every material tracked area must map to a durable wiki subject, be grouped under a documented subsystem, or appear as an explicit `not-applicable`, `excluded`, `partial`, or `blocked` gap entry.
+## Route comprehensive functional analysis
 
-### Plan the page graph
+When Comprehensive repository wiki mode is selected, read [repository-functional-analysis.md](repository-functional-analysis.md) before discovering modules, planning pages, or writing a coverage artifact. That reference defines candidate discovery, materiality, behavioral depth, module dossiers, evidence gates, flow tracing, roll-ups, batches, the machine-readable contract, and completion validation.
 
-Match and update an existing canonical repository page when one exists; otherwise create one repository home page. Build a connected set of evidence-backed subject pages beneath it. Use the smallest page graph that lets a reader understand the system without opening code. Combine subjects for a small repository and split them at durable cognitive boundaries for a large repository or monorepo.
-
-| Subject | Reader questions to answer |
-| --- | --- |
-| Repository home / Start here | What does this repository do, for whom, at which revision, and where should a reader go next? |
-| Architecture and system context | Which runtime units and external systems exist, where are the boundaries, and in which direction do dependencies flow? |
-| Modules and subsystems | What is each material component responsible for, what is outside its boundary, and how does it relate to the rest of the system? |
-| Business capabilities and domain model | Which actors, entities, terminology, invariants, policies, permissions, lifecycles, and business rules shape behavior? |
-| Core workflows | How do the important user, request, job, event, and data flows proceed end to end? |
-| Interfaces and integrations | Which APIs, CLIs, events, schemas, protocols, extension points, and third-party contracts are exposed or consumed? |
-| Data and state | Where is state owned, persisted, cached, queued, migrated, retained, and made consistent? |
-| Runtime and operations | How do configuration, environments, delivery, deployment topology, observability, maintenance, and recovery work? |
-| Security, reliability, and verification | Where are trust boundaries and checks, how do failures and retries behave, and which expectations are actually tested? |
-| Decisions, evolution, and extension | Which important trade-offs, migrations, deprecated paths, and supported extension seams explain the current design? |
-| Glossary, coverage, and known gaps | Which terms need definition, what was excluded or unavailable, and where do contradictions or uncertainties remain? |
-
-The canonical home page is required in this mode and must link directly to the top-level repository subjects. Every generated repository page must be reachable from it through the page hierarchy and link back to its owning parent or the home page. Do not create empty category pages: fold a thin subject into a related page and record a `not-applicable` or grouped disposition in the coverage matrix.
-
-A module page should explain its purpose, responsibilities and non-responsibilities, entrypoints, dependencies, public contracts, owned state, business rules, participating workflows, failure and security concerns, extension points, and evidence. A workflow page should explain its trigger, actors, preconditions, sequence, module transitions, state changes, external calls, business decisions, failure and retry behavior, security checks, outputs, and observable effects. Include diagrams only when they materially clarify relationships, and keep the prose sufficient when a renderer cannot display them.
-
-### Work in evidence passes
-
-Use the same immutable repository state throughout these passes:
-
-1. Pin repository identity and build a tracked-file census with material exclusions.
-2. Discover applications, services, packages, entrypoints, interfaces, schemas, state stores, configuration, delivery assets, tests, documentation, and ownership boundaries.
-3. Derive the durable systems, business capabilities, modules, actors, entities, and workflows that should become wiki subjects.
-4. Create the page plan and coverage matrix before writing. Map every material inventory group to an owning page, grouped parent subject, or visible gap entry.
-5. Deep-read defining and representative evidence for every material component and every applicable coverage lens. Follow dependencies far enough to explain behavior and boundaries, not merely file names.
-6. Capture the repository pointer, manifest, and selected defining evidence through the generic CLI mapping before writing. Record source IDs and immutable locators in the coverage matrix; never cite an uncaptured checkout or the derived matrix as primary implementation evidence.
-7. Write the module, domain, workflow, and cross-cutting pages, then finish the repository home page from the reconciled page graph.
-8. Reconcile terminology, responsibility boundaries, dependency direction, workflow transitions, business rules, and contradictions across pages. Add bidirectional wikilinks that improve understanding.
-9. Close the coverage matrix, rebuild generated indexes, and run the normal citation, schema, link, and lint checks.
-
-For a small repository, related subjects may fit in a compact page set. For a medium repository, use pages for durable subsystems and core workflows. For a large repository or monorepo, use a hierarchy of repository, system or domain, subsystem or service, package-group, workflow, and cross-cutting pages. Inventory every workspace or package, but group trivial utilities, fixtures, generated packages, and tightly coupled leaf packages when separate pages would not help a reader.
-
-Large repositories may be processed in batches, but all batches must use the same pinned revision and one coverage matrix. If work stops before the matrix is closed, label the result incomplete and report the remaining material areas; an architecture overview alone is not a completed Comprehensive repository wiki.
+Comprehensive means complete conceptual and behavioral coverage of the declared material modules at one pinned evidence set. It does not mean copying every file, reading every line, archiving every byte, or creating one page per file or directory. Do not accept an architecture overview, package list, route table, or capability matrix as comprehensive completion.
 
 ## Resolve immutable identity
 
@@ -104,6 +67,7 @@ Identify the evidence state before quoting or summarizing it.
 - Record the repository identity without embedding credentials.
 - Record the version-control system and the requested branch, tag, revision, or review reference.
 - Resolve mutable names to an immutable full commit SHA or equivalent object ID.
+- For Git schema-version-1 validation, use the full lowercase 40-character SHA-1 or 64-character SHA-256 object ID; a branch, tag, abbreviated SHA, review ref, or symbolic name such as `HEAD` is never the revision.
 - Record the acquisition time and whether the source came from a local checkout or remote service.
 - Detect a dirty working tree, staged changes, untracked files, submodules, sparse checkout, and LFS.
 - Distinguish committed evidence from local-only changes; never merge them silently.
@@ -143,6 +107,7 @@ Choose the smallest representation that preserves the claims being integrated.
 | Archive | Complete offline reconstruction is explicitly required and permitted | Approved repository archive, commit, archive hash, exclusions, submodule policy |
 
 Use a pointer-only record plus selected snapshots for most knowledge ingestion. Use a manifest to prove coverage without copying everything.
+For Comprehensive mode, capture an immutable manifest when the version-control inventory is enumerable, then add a pointer when a stable canonical URI exists and selected snapshots when permissions and claim-level reproducibility require them. Do not require copying selected blobs when policy prohibits it; record the resulting evidence limit.
 Create an archive only for an explicit archival need after checking size, license, sensitivity, LFS objects, submodules, and storage policy.
 
 Never treat a directory copy without commit identity and an inventory as a reproducible repository source.
@@ -151,12 +116,27 @@ Never treat a directory copy without commit identity and an inventory as a repro
 
 Use the generic CLI rather than handcrafting source envelopes. Map repository provenance explicitly instead of accepting a temporary `file://` origin.
 
-- Pointer-only commit: capture the canonical commit URL with `--pointer-only --source-type repository --adapter git --external-key <canonical-repository>@<commit>`.
-- Manifest: capture one JSON or Markdown manifest with `--origin <canonical-commit-url> --source-type repository-manifest --adapter git --external-key <canonical-repository>@<commit>:manifest`.
-- Selected snapshot: capture each selected file separately with `--origin <canonical-blob-url> --source-type code --adapter git --external-key <canonical-repository>@<commit>:<path>`. Do not reuse one temporary origin for multiple paths.
-- Archive: capture the approved archive with `--origin <canonical-commit-url> --source-type repository-archive --adapter git --external-key <canonical-repository>@<commit>:archive`.
+If the repository has no stable canonical remote, mint one persistent identity such as `urn:llm-wiki:repository:<uuid>` and preserve it across revisions. Use that identity plus the immutable revision for manifest provenance and external keys. Do not expose an absolute local checkout path or mint a new identity on every ingest.
 
-Include at least these fields in a manifest: schema version, canonical repository, version-control system, full commit SHA, tree ID when available, ref context, acquisition time, scope, clean or working-tree overlay state, tracked-file count, selected paths with blob or content hashes, material exclusions, submodule and LFS state, and reproducibility limits.
+- Pointer-only commit: capture the canonical commit URL, or `<local-repository-URN>@<commit>` when no remote exists, with `--pointer-only --source-type repository --adapter git --external-key <canonical-repository>@<commit>`.
+- Manifest: capture one JSON manifest with `--origin <canonical-commit-url-or-local-URN@commit> --source-type repository-manifest --adapter git --external-key <canonical-repository>@<commit>:manifest`. Comprehensive mode must use the machine-readable shape in [the manifest example](../assets/repository-manifest.example.json); narrower modes may use Markdown when no coverage validation is required.
+- Selected snapshot: capture each selected file separately with `--origin <canonical-blob-url-or-local-URN@commit:path> --source-type code --adapter git --external-key <canonical-repository>@<commit>:<path>`. Do not reuse one temporary origin for multiple paths.
+- Archive: capture the approved archive with `--origin <canonical-commit-url-or-local-URN@commit> --source-type repository-archive --adapter git --external-key <canonical-repository>@<commit>:archive`.
+
+Include at least these fields in a manifest: `kind: "llm-wiki.repository-manifest"`, schema version, canonical repository identity, version-control system, full commit SHA, tree ID when available, ref context, acquisition time, scope, clean or working-tree overlay state, `tracked_file_count`, every tracked file with repository-relative path and blob or content ID, material exclusions, submodule and LFS state, and reproducibility limits. The count must equal the `tracked_files` array length.
+
+Schema version 1 uses these exact collection element shapes:
+
+- `tracked_files[]`: `{ "path", "mode", "object_id"[, "size"] }`; preserve repository-relative paths byte-for-byte, reject surrounding whitespace or ancestor collisions between file/gitlink entries, require canonical Git modes (`100644`, `100755`, `120000`, or `160000`), and treat `size`, when present, as a non-negative integer. Schema version 1 also rejects `#` in paths because `#` is the unescaped locator-fragment delimiter; record this as a blocking schema limitation instead of aliasing or silently omitting such files.
+- `exclusions[]`: `{ "path", "reason", "blocking" }`; `path` is a tracked file or directory prefix omitted from semantic analysis, not from the census.
+- `submodules[]`: `{ "path", "identity", "revision", "available", "blocking"[, "reason"] }`; require exactly one row for every Git path tracked with gitlink mode `160000`, a persistent child-repository identity, a child `revision` equal to that gitlink's tracked `object_id`, and `reason` when `available` is false.
+- `lfs[]`: `{ "path", "object_id", "materialized", "blocking"[, "reason"] }`; use `sha256:<64-lowercase-hex>` object IDs, require an ordinary Git blob mode (`100644` or `100755`), never overlap a submodule gitlink, and require `reason` when `materialized` is false.
+- `limitations[]`: `{ "id", "kind", "reason", "blocking" }`; IDs are unique within the manifest.
+- `working_tree`: `{ "clean", "overlay_included" }`, both Boolean. Describe an included overlay as a separately pinned evidence unit rather than adding untracked paths to the committed census silently.
+
+All required strings are non-empty, required Booleans are literal `true` or `false`, and required fields are not nullable. In a Git manifest, the pinned revision, optional tree ID, and every tracked object ID use the same full lowercase 40- or 64-hex object format. Unknown fields are tolerated for forward-compatible producer metadata but ignored by schema version 1 and cannot satisfy a coverage or completion gate. A blocking exclusion, unavailable submodule, missing LFS object, or reproducibility limitation prevents Comprehensive completion.
+
+A schema-version-1 coverage artifact describes exactly one repository identity. In the parent artifact, every submodule is a `boundary-only` module whose boundary evidence cites the exact parent gitlink path; never cite a child file as though it belonged to the parent census. If the requested scope includes a submodule's internal behavior, ingest that child identity and revision into its own manifest and coverage artifact, link the child wiki from the parent boundary page, and validate both artifacts before reporting the multi-repository result complete. Keep the parent submodule entry blocking until any required child analysis is complete; a submodule intentionally scoped only as an external boundary may be non-blocking with an explicit rationale.
 
 Treat an agent-generated repository manifest as provenance and coverage evidence with `--authority agent-provenance`. Cite selected repository blobs, not the manifest, for substantive implementation claims.
 
@@ -174,6 +154,8 @@ Build coverage from version-control metadata rather than recursive filesystem tr
 - Record LFS pointers separately from materialized LFS objects.
 - Record submodule entries without pretending their contents belong to the parent commit.
 
+Use normalized POSIX repository-relative literal paths. Do not use absolute paths, `..`, backslashes, control characters, globs, or trailing slashes. Schema version 1 limits a path to 4,096 UTF-8 bytes and 256 segments. In module, discovery, and inventory records, a literal may name a tracked file or a directory prefix implied by at least one tracked file; a directory prefix covers all descendant files. Evidence locators must name an exact tracked file. Overlapping inventory groups are allowed only when intentional. A tracked file may map to multiple module IDs, but it cannot simultaneously map to a module and an `excluded` or `not-applicable` disposition, and it cannot receive conflicting direct dispositions.
+
 Exclude by default:
 
 - version-control internals and agent workspace state;
@@ -187,7 +169,7 @@ List material exclusions and explain their effect on coverage. Do not claim full
 
 ## Apply coverage lenses
 
-For Comprehensive repository wiki mode, evaluate every lens and mark a lens `not-applicable` with a reason instead of silently skipping it. For narrower modes, use only the lenses needed by the selected intent.
+For Comprehensive repository wiki mode, evaluate every lens at repository level, then apply only relevant lenses per module under [repository-functional-analysis.md](repository-functional-analysis.md). For narrower modes, use only the lenses needed by the selected intent.
 
 - Purpose and product boundary: entry documentation, package metadata, and user-facing surfaces.
 - Domain and business logic: actors, terminology, entities, invariants, policies, permissions, lifecycle transitions, and decision rules.
@@ -200,36 +182,7 @@ For Comprehensive repository wiki mode, evaluate every lens and mark a lens `not
 - Verification: focused tests, fixtures, static checks, and failure-path coverage.
 - Evolution: relevant commits, release notes, migrations, and superseded designs.
 
-Sample representative files within each chosen lens. In Comprehensive mode, representative evidence must cover every material subsystem recorded in the coverage matrix; sampling cannot justify an unexplained subsystem. Follow references until the claim is supported or a boundary is found; do not expand merely because more files exist.
-
-## Validate comprehensive coverage
-
-Maintain a coverage matrix in `raw/derived/` and expose a concise, human-readable summary in the repository page graph. The matrix proves conceptual coverage without turning the wiki into a file inventory. Give each material inventory group a row with:
-
-- a stable component or capability identifier;
-- its material repository paths and why they matter;
-- its owning wiki page, grouped parent subject, or visible gap entry;
-- one of `covered`, `partial`, `not-applicable`, `excluded`, or `blocked` for every coverage-lens cell, with a reason for every status other than `covered`;
-- evidence source IDs and immutable commit, path, and line locators;
-- an optional overall row status that summarizes, but never hides, the lens cells;
-- the last verified commit.
-
-Do not mark this mode complete while a material inventory group is absent from the matrix, a planned page remains unwritten, or a `partial` or `blocked` row prevents the reader goals below. Preserve non-blocking exclusions and uncertainties prominently rather than hiding them.
-
-Before acceptance, verify that a non-code reader can answer, without reading source code:
-
-- what the repository does, who uses it, and what lies outside its boundary;
-- how the major modules relate and what each one owns;
-- which key design decisions and dependency directions are evidenced, what rationale is documented, and where rationale remains unknown;
-- how core end-to-end flows cross modules and change data or state;
-- which domain entities, business rules, permissions, and lifecycle invariants govern behavior;
-- which public interfaces, integrations, configuration, delivery, and operational concerns matter;
-- where security boundaries, failure behavior, retries, observability, and verification live;
-- where supported behavior can be extended and which important gaps remain.
-
-Also verify that the repository home page reaches every generated page, no generated page is orphaned, terminology is consistent or defined, module responsibilities and workflow transitions agree across pages, and intent, implementation, tested expectation, configured default, agent inference, and observed runtime are never conflated.
-
-An explicitly evidenced unknown, such as unavailable design rationale or deployment truth that the repository cannot establish, may satisfy coverage when its scope and evidence limit are visible. It does not by itself make the wiki partial when the reader can still understand the implemented system. Never invent rationale or runtime behavior to close the matrix.
+Sample representative files within each chosen lens. In Comprehensive mode, representative evidence must meet the functional-analysis evidence gate for every material module; sampling cannot justify an unexplained module. Follow references until the claim is supported or a boundary is found; do not expand merely because more files exist.
 
 ## Respect authority boundaries
 
@@ -250,7 +203,7 @@ When repository evidence conflicts with meetings, tickets, metrics, incidents, o
 
 Make each material repository claim reproducible from an immutable revision.
 
-- Cite repository identity, full commit ID, repository-relative path, and exact line range.
+- Cite repository identity, full commit ID, repository-relative path, and the strongest stable locator available. Require exact lines for stable text.
 - Derive line numbers from the cited blob, not from a different working-tree version.
 - Add a symbol, heading, JSON pointer, schema path, or test name when it improves stability.
 - For a diff claim, cite both endpoint commits and the relevant changed path or hunk.
@@ -259,6 +212,18 @@ Make each material repository claim reproducible from an immutable revision.
 - Keep the raw source ID in the wiki citation so the repository locator resolves through captured provenance.
 
 Use a locator shaped like `repository@<commit>:<path>#L<start>-L<end>` when no stronger canonical locator exists. Never cite only a branch name, local absolute path, search-result rank, or editor line number.
+
+Bind every machine-readable evidence locator to exactly one captured source role:
+
+| Source role | Capture requirement | `external_key` |
+| --- | --- | --- |
+| `code` | Non-pointer selected file capture; origin binds repository identity and revision, while the external key binds the file | `<repository-identity>@<revision>:<path>` |
+| `repository` | Pointer-only immutable commit record; origin binds repository identity and revision | `<repository-identity>@<revision>` |
+| `repository-archive` | Non-pointer approved archive; origin binds repository identity and revision | `<repository-identity>@<revision>:archive` |
+
+A pointer-only `repository` source may support a substantive evidence gate when copying source is prohibited or unnecessary, but only when the manifest proves the cited file belongs to the pinned revision and the locator identifies the exact file plus stable fragment. The analysis still has to inspect that pinned file through an authorized provider; the pointer is provenance, not proof that prose quality was reviewed. Prefer a non-pointer `code` capture for durable claim-level reproduction. A `repository-manifest` source never satisfies substantive implementation evidence.
+
+For non-pointer `code` and `repository-archive` sources, the captured original must remain inside its immutable source envelope and match the recorded SHA-256. For Git `code`, its origin must name the exact revision and repository path, and the Git blob object ID computed from the captured bytes must equal that path's manifest `object_id`; updating only the envelope hash cannot substitute different bytes. Treat a materialized LFS object and its pointer as distinct evidence, and do not claim ordinary blob binding unless the manifest identifies the captured representation. A repository fragment is a non-whitespace stable symbol, test, heading, JSON Pointer, artifact locator, or line locator of at most 512 characters. Write line locators as `L<start>` or `L<start>-L<end>`; for a selected `code` capture, the validator verifies that the range is ordered and within the captured file. Arbitrary semantic fragments remain subject to reader acceptance because the validator does not parse every programming language.
 
 ## Integrate with mixed sources
 
@@ -273,7 +238,7 @@ Integrate repository evidence into the existing mixed-source wiki and its projec
 - Create a repository overview page only when the repository itself is a durable entity in the wiki. Comprehensive repository wiki mode makes it a durable entity and therefore requires the repository home page.
 - Never generate pages mechanically for every directory, package, class, function, or file. A material independently understandable service, subsystem, or package group may deserve its own page.
 
-For narrower modes, prefer a small architecture or domain synthesis that cites selected files over a file-by-file inventory rendered as prose. Comprehensive mode produces a coordinated hierarchical page set sized to the material concepts. Keep the manifest and detailed coverage matrix in raw or derived evidence, not as dozens of wiki stubs.
+For narrower modes, prefer a small architecture or domain synthesis that cites selected files over a file-by-file inventory rendered as prose. Comprehensive mode produces a coordinated hierarchical page set sized to the material concepts. Keep the manifest and detailed coverage artifact in raw or derived evidence, not as dozens of wiki stubs.
 
 ## Process version updates
 
@@ -286,7 +251,7 @@ Treat every new repository revision as a new evidence state.
 5. Link the new source version to the prior one with the normal `supersedes` or version relationship.
 6. Update claims with an explicit as-of commit and preserve historically correct statements when useful.
 7. Record removed, renamed, or contradicted behavior instead of silently replacing it.
-8. Compare the prior and current coverage matrices so new or removed material areas are accounted for and affected pages are identified.
+8. Compare the prior and current coverage registries so new or removed material areas are accounted for and affected pages are identified.
 9. Re-run repository coverage and citation checks for affected lenses only.
 
 Do not mutate an old snapshot to match the latest branch. Do not infer deployment from a commit alone; require an operational source when deployment status matters.
@@ -311,11 +276,11 @@ Accept the ingest only when:
 - the evidence representation is justified and immutable identity is recorded;
 - the tracked inventory and material exclusions make coverage auditable;
 - selected coverage lenses support the resulting claims without unexplained gaps;
-- every material implementation claim has a source ID and commit, path, and line locator;
+- every material implementation claim has a source ID and immutable repository locator, using lines for stable text and artifact-specific locators otherwise;
 - mixed-source authority and time differences remain visible;
 - version relationships preserve old evidence rather than overwriting it;
 - no repository code ran and no credentials were persisted;
 - wiki output is concept-oriented rather than file-oriented;
 - rebuild, lint, and the normal ingest acceptance checks pass.
 
-For Comprehensive repository wiki mode, additionally require that every material tracked area appears in the coverage matrix, every applicable lens is evaluated, the reader questions in [Validate comprehensive coverage](#validate-comprehensive-coverage) are answerable, the home page provides complete navigation, no generated page is orphaned, and every partial, excluded, blocked, or not-applicable area has a visible reason. If a material gap prevents those outcomes, return a clearly labeled partial result rather than claiming comprehensive completion.
+For Comprehensive repository wiki mode, also satisfy [repository-functional-analysis.md](repository-functional-analysis.md) and run its deterministic coverage validator without `--allow-partial` before claiming `comprehensive-complete`. If a material gap prevents completion, return the computed partial state instead of overriding it in prose.

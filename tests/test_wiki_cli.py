@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
 import re
@@ -34,6 +35,82 @@ WIKI = load_wiki_module()
 
 
 class RepositoryLayoutTests(unittest.TestCase):
+    def test_repository_origin_binding_is_resource_aware(self) -> None:
+        identity = "https://github.com/example/project"
+        revision = "a" * 40
+        repository_path = "src/main.py"
+        for origin in (
+            f"{identity}/blob/{revision}/{repository_path}",
+            f"{identity}/-/blob/{revision}/{repository_path}",
+            f"{identity}/src/commit/{revision}/{repository_path}",
+            f"{identity}/+/{revision}/{repository_path}",
+            f"{identity}@{revision}:{repository_path}",
+        ):
+            with self.subTest(origin=origin):
+                self.assertTrue(
+                    WIKI.repository_origin_binds(
+                        origin,
+                        identity,
+                        revision,
+                        repository_path=repository_path,
+                    )
+                )
+        azure_identity = "https://dev.azure.com/example/project/_git/project"
+        self.assertTrue(
+            WIKI.repository_origin_binds(
+                f"{azure_identity}?path=%2Fsrc%2Fmain.py&version=GC{revision}",
+                azure_identity,
+                revision,
+                repository_path=repository_path,
+            )
+        )
+        for origin in (
+            f"{identity}/issues/{revision}/{repository_path}",
+            f"{identity}/issues/123?unrelated={revision}",
+        ):
+            with self.subTest(origin=origin):
+                self.assertFalse(
+                    WIKI.repository_origin_binds(
+                        origin,
+                        identity,
+                        revision,
+                        repository_path=repository_path,
+                    )
+                )
+        for origin in (
+            f"{identity}/commit/{revision}",
+            f"{identity}/+/{revision}",
+            f"{identity}@{revision}",
+        ):
+            self.assertTrue(WIKI.repository_origin_binds(origin, identity, revision))
+        self.assertFalse(
+            WIKI.repository_origin_binds(
+                f"{identity}/issues/{revision}", identity, revision
+            )
+        )
+
+    def test_markdown_visibility_distinguishes_navigation_from_code(self) -> None:
+        self.assertEqual(
+            WIKI.extract_links("- Navigation\n    - [[module]]\n"),
+            ("module",),
+        )
+        self.assertEqual(WIKI.extract_links("> [[module]]\n"), ("module",))
+        self.assertEqual(
+            WIKI.extract_links("- Navigation\n      [[module]]\n"),
+            ("module",),
+        )
+        for hidden in (
+            "- Navigation\n\n      [[module]]\n",
+            "-     [[module]]\n",
+            "-   \n      [[module]]\n",
+            "1.   \n       [[module]]\n",
+            ">     [[module]]\n",
+            "<pre>\n[[module]]\n",
+            "- Navigation\n  ```markdown\n  [[module]]\n  ```\n",
+        ):
+            with self.subTest(hidden=hidden):
+                self.assertEqual(WIKI.extract_links(hidden), ())
+
     def test_all_skills_are_valid_and_self_contained(self) -> None:
         for name in SUITE_NAMES:
             skill_dir = SKILLS_ROOT / name
@@ -73,6 +150,12 @@ class RepositoryLayoutTests(unittest.TestCase):
     def test_repository_ingestion_is_routed_as_an_on_demand_reference(self) -> None:
         skill_file = SKILLS_ROOT / "wiki-ingest" / "SKILL.md"
         reference = SKILLS_ROOT / "wiki-ingest" / "references" / "repository-ingestion.md"
+        functional_reference = (
+            SKILLS_ROOT
+            / "wiki-ingest"
+            / "references"
+            / "repository-functional-analysis.md"
+        )
         metadata, body = WIKI.parse_frontmatter(skill_file.read_text(encoding="utf-8"))
         description = str(metadata["description"])
 
@@ -94,18 +177,20 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("references/repository-ingestion.md", body)
         self.assertIn("one-time repository ingest", body)
         self.assertIn("Comprehensive repository wiki mode", body)
+        self.assertIn("references/repository-functional-analysis.md", body)
+        self.assertIn("repository-coverage <coverage-json>", body)
         self.assertTrue(reference.is_file())
+        self.assertTrue(functional_reference.is_file())
 
         contract = reference.read_text(encoding="utf-8")
         for section in (
             "## Resolve immutable identity",
-            "## Build a comprehensive repository wiki",
+            "## Route comprehensive functional analysis",
             "## Acquire evidence read-only",
             "## Choose an evidence representation",
             "## Map evidence into capture",
             "## Inventory tracked content",
             "## Apply coverage lenses",
-            "## Validate comprehensive coverage",
             "## Respect authority boundaries",
             "## Cite commit, path, and line",
             "## Integrate with mixed sources",
@@ -118,13 +203,8 @@ class RepositoryLayoutTests(unittest.TestCase):
         for comprehensive_contract in (
             "| Comprehensive repository wiki |",
             "without reading source code",
-            "major modules",
-            "key design decisions",
-            "end-to-end flows",
-            "business rules",
-            "coverage matrix",
             "one page per file",
-            "Capture the repository pointer, manifest",
+            "capture an immutable manifest",
         ):
             self.assertIn(comprehensive_contract, contract)
         self.assertIn("repository URL or local directory", contract)
@@ -134,6 +214,77 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertIn(capture_flag, contract)
         self.assertIn("Avoid blind whole-directory capture", contract)
         self.assertRegex(contract, r"Do not (?:run|execute)")
+        manifest_example_path = (
+            SKILLS_ROOT
+            / "wiki-ingest"
+            / "assets"
+            / "repository-manifest.example.json"
+        )
+        self.assertIn("../assets/repository-manifest.example.json", contract)
+        manifest_example = json.loads(manifest_example_path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest_example["kind"], "llm-wiki.repository-manifest")
+        self.assertEqual(
+            manifest_example["tracked_file_count"],
+            len(manifest_example["tracked_files"]),
+        )
+        self.assertEqual(
+            set(manifest_example["exclusions"][0]),
+            {"path", "reason", "blocking"},
+        )
+        self.assertEqual(
+            set(manifest_example["limitations"][0]),
+            {"id", "kind", "reason", "blocking"},
+        )
+
+        functional_contract = functional_reference.read_text(encoding="utf-8")
+        for section in (
+            "## Establish the module registry",
+            "## Reconcile discovery surfaces",
+            "## Assign analysis depth and verification",
+            "## Meet the evidence gate",
+            "## Write the module dossier",
+            "## Trace behavior end to end",
+            "## Roll up coverage",
+            "## Maintain the machine-readable contract",
+            "## Validate and report completion",
+        ):
+            self.assertIn(section, functional_contract)
+        for invariant in (
+            "schema_version: 1",
+            "discovery_gaps",
+            "behavioral",
+            "reachability",
+            "implementation",
+            "boundary",
+            "comprehensive-complete",
+            "semantic_checks_performed: false",
+        ):
+            self.assertIn(invariant, functional_contract)
+        self.assertIn("Schema version 1 requires one JSON file", functional_contract)
+        self.assertIn("pointer-only `repository`", functional_contract)
+
+        example_path = (
+            SKILLS_ROOT
+            / "wiki-ingest"
+            / "assets"
+            / "repository-coverage.example.json"
+        )
+        self.assertIn("../assets/repository-coverage.example.json", functional_contract)
+        example = json.loads(example_path.read_text(encoding="utf-8"))
+        self.assertEqual(example["kind"], "llm-wiki.repository-coverage")
+        self.assertEqual(example["schema_version"], 1)
+        self.assertEqual(
+            {lens["id"] for lens in example["repository_lenses"]},
+            set(WIKI.REPOSITORY_LENS_IDS),
+        )
+        material = next(
+            module for module in example["modules"] if module["materiality"] == "material"
+        )
+        self.assertEqual(set(material["dossier"]), set(WIKI.REPOSITORY_DOSSIER_FACETS))
+        self.assertEqual(
+            {step["stage"] for step in example["flows"][0]["steps"]},
+            set(WIKI.REPOSITORY_FLOW_STAGES),
+        )
 
     def test_specialized_ingestion_references_are_routed_on_demand(self) -> None:
         skill_file = SKILLS_ROOT / "wiki-ingest" / "SKILL.md"
@@ -324,6 +475,1532 @@ class WikiCliTests(unittest.TestCase):
             frontmatter.insert(-2, f"status: {status}")
         path.write_text("\n".join(frontmatter) + body.rstrip() + "\n", encoding="utf-8")
         return path
+
+    def write_repository_coverage_fixture(self) -> tuple[Path, dict]:
+        self.init()
+        identity = "https://github.com/example/project"
+        revision = "a" * 40
+        main_source_bytes = b"def main():\n    return 'ok'\n"
+        main_blob_id = hashlib.sha1(
+            f"blob {len(main_source_bytes)}\0".encode() + main_source_bytes
+        ).hexdigest()
+        manifest = self.run_cli(
+            "--json",
+            "capture",
+            "--stdin",
+            "--name",
+            "repository-manifest.json",
+            "--title",
+            "example/project repository manifest",
+            "--source-type",
+            "repository-manifest",
+            "--adapter",
+            "git",
+            "--origin",
+            f"{identity}/commit/{revision}",
+            "--external-key",
+            f"{identity}@{revision}:manifest",
+            "--authority",
+            "agent-provenance",
+            "--classification",
+            "public",
+            input_bytes=json.dumps(
+                {
+                    "kind": "llm-wiki.repository-manifest",
+                    "schema_version": 1,
+                    "repository": {
+                        "identity": identity,
+                        "revision": revision,
+                        "vcs": "git",
+                    },
+                    "ref_context": "refs/heads/main",
+                    "acquired_at": "2026-07-15T00:00:00Z",
+                    "scope": "Committed tree at the pinned revision",
+                    "working_tree": {
+                        "clean": True,
+                        "overlay_included": False,
+                    },
+                    "tracked_file_count": 4,
+                    "tracked_files": [
+                        {
+                            "path": path,
+                            "mode": "100644",
+                            "object_id": (
+                                main_blob_id
+                                if path == "src/main.py"
+                                else str(index + 1) * 40
+                            ),
+                            "size": 10,
+                        }
+                        for index, path in enumerate(
+                            (
+                                "src/main.py",
+                                "src/helper.py",
+                                "tests/test_main.py",
+                                "vendor/library.js",
+                            )
+                        )
+                    ],
+                    "exclusions": [],
+                    "submodules": [],
+                    "lfs": [],
+                    "limitations": [],
+                }
+            ).encode(),
+        )
+        self.assertEqual(manifest.returncode, 0, manifest.stderr.decode())
+        manifest_source_id = json.loads(manifest.stdout)["sources"][0]["source_id"]
+        code_source = self.run_cli(
+            "--json",
+            "capture",
+            "--stdin",
+            "--name",
+            "main.py",
+            "--title",
+            "example/project source evidence",
+            "--source-type",
+            "code",
+            "--adapter",
+            "git",
+            "--origin",
+            f"{identity}/blob/{revision}/src/main.py",
+            "--external-key",
+            f"{identity}@{revision}:src/main.py",
+            "--classification",
+            "public",
+            input_bytes=main_source_bytes,
+        )
+        self.assertEqual(code_source.returncode, 0, code_source.stderr.decode())
+        source_id = json.loads(code_source.stdout)["sources"][0]["source_id"]
+        repository_source = self.run_cli(
+            "--json",
+            "capture",
+            f"{identity}/commit/{revision}",
+            "--pointer-only",
+            "--title",
+            "example/project repository evidence",
+            "--source-type",
+            "repository",
+            "--adapter",
+            "git",
+            "--external-key",
+            f"{identity}@{revision}",
+            "--classification",
+            "public",
+        )
+        self.assertEqual(
+            repository_source.returncode, 0, repository_source.stderr.decode()
+        )
+        repository_source_id = json.loads(repository_source.stdout)["sources"][0][
+            "source_id"
+        ]
+
+        lens_headings = "\n\n".join(
+            f"## {lens_id}\n\nCovered." for lens_id in WIKI.REPOSITORY_LENS_IDS
+        )
+        self.write_page(
+            "repository.md",
+            title="Repository",
+            sources=[source_id],
+            body=f"# Repository\n\n[[module]]\n\n{lens_headings}\n",
+        )
+        dossier_headings = "\n\n".join(
+            f"## {facet}\n\nDocumented." for facet in WIKI.REPOSITORY_DOSSIER_FACETS
+        )
+        self.write_page(
+            "module.md",
+            title="Module Capability",
+            sources=[source_id, repository_source_id],
+            body=f"# Module Capability\n\n[[repository]]\n\n{dossier_headings}\n\n## flow-main\n\nEnd-to-end behavior.\n\n## supporting-helper\n\nHelper contract.\n",
+        )
+
+        def evidence(
+            evidence_class: str,
+            locator: str,
+            evidence_source_id: str | None = None,
+        ) -> dict:
+            return {
+                "class": evidence_class,
+                "source_id": evidence_source_id or source_id,
+                "locator": f"repository@{revision}:{locator}",
+            }
+
+        coverage = {
+            "kind": "llm-wiki.repository-coverage",
+            "schema_version": 1,
+            "repository": {"identity": identity, "revision": revision},
+            "manifest_source_id": manifest_source_id,
+            "home_page": "wiki/repository.md",
+            "batch_state": "comprehensive-complete",
+            "discovery_gaps": [],
+            "repository_lenses": [
+                {
+                    "id": lens_id,
+                    "status": "covered",
+                    "page": "wiki/repository.md",
+                    "anchor": lens_id,
+                    "evidence": [evidence("boundary", f"src/main.py#{lens_id}")],
+                    "blocking": False,
+                }
+                for lens_id in WIKI.REPOSITORY_LENS_IDS
+            ],
+            "discovery_records": [
+                {
+                    "id": "route-main",
+                    "kind": "runtime-entrypoint",
+                    "locator": f"repository@{revision}:src/main.py#main",
+                    "module_id": "module-main",
+                },
+                {
+                    "id": "helper-main",
+                    "kind": "supporting-contract",
+                    "locator": f"repository@{revision}:src/helper.py#helper",
+                    "module_id": "module-helper",
+                },
+                {
+                    "id": "vendor-fixture",
+                    "kind": "vendored-cohort",
+                    "locator": f"repository@{revision}:vendor/library.js",
+                    "module_id": "module-vendor",
+                },
+            ],
+            "inventory_groups": [
+                {
+                    "id": "source-tree",
+                    "paths": ["src"],
+                    "module_ids": ["module-main", "module-helper"],
+                },
+                {
+                    "id": "vendor-tree",
+                    "paths": ["vendor"],
+                    "module_ids": ["module-vendor"],
+                },
+                {
+                    "id": "verification-tree",
+                    "paths": ["tests"],
+                    "module_ids": ["module-main"],
+                }
+            ],
+            "modules": [
+                {
+                    "id": "module-main",
+                    "title": "Module Capability",
+                    "materiality": "material",
+                    "materiality_reason": "Owns a reachable runtime capability and behavior.",
+                    "parent_id": None,
+                    "paths": ["src/main.py"],
+                    "page": "wiki/module.md",
+                    "anchor": "Module Capability",
+                    "analysis_depth": "behavioral",
+                    "verification": {"status": "test-supported"},
+                    "dossier": {
+                        facet: {
+                            "status": "documented",
+                            "locator": f"wiki/module.md#{facet}",
+                        }
+                        for facet in WIKI.REPOSITORY_DOSSIER_FACETS
+                    },
+                    "evidence": [
+                        evidence("reachability", "src/main.py#main"),
+                        evidence("implementation", "src/main.py#run"),
+                        evidence("boundary", "src/main.py#output"),
+                        evidence(
+                            "verification",
+                            "tests/test_main.py#test_run",
+                            repository_source_id,
+                        ),
+                    ],
+                    "flow_ids": ["flow-main"],
+                    "gaps": [],
+                },
+                {
+                    "id": "module-helper",
+                    "title": "Supporting Helper",
+                    "materiality": "supporting",
+                    "materiality_reason": "Provides a stable helper contract for the material owner.",
+                    "parent_id": "module-main",
+                    "owner_module_id": "module-main",
+                    "paths": ["src/helper.py"],
+                    "page": "wiki/module.md",
+                    "anchor": "supporting-helper",
+                    "analysis_depth": "surface",
+                    "verification": {
+                        "status": "not-applicable",
+                        "reason": "The helper has no independent verification contract.",
+                    },
+                    "dossier": {},
+                    "evidence": [
+                        evidence("reachability", "src/main.py#helper-call"),
+                        evidence(
+                            "boundary", "src/helper.py#helper", repository_source_id
+                        ),
+                    ],
+                    "flow_ids": [],
+                    "gaps": [],
+                    "disposition": {
+                        "reason": "Covered through its owning material capability.",
+                        "evidence": {
+                            "source_id": repository_source_id,
+                            "locator": f"repository@{revision}:src/helper.py#helper",
+                        },
+                    },
+                },
+                {
+                    "id": "module-vendor",
+                    "title": "Vendored fixture cohort",
+                    "materiality": "excluded",
+                    "materiality_reason": "Vendored output has no owned runtime responsibility.",
+                    "parent_id": None,
+                    "paths": ["vendor/library.js"],
+                    "analysis_depth": "inventory",
+                    "verification": {
+                        "status": "not-applicable",
+                        "reason": "Excluded vendored output is not independently verified.",
+                    },
+                    "dossier": {},
+                    "evidence": [],
+                    "flow_ids": [],
+                    "gaps": [],
+                    "disposition": {
+                        "reason": "Excluded as auditable vendored output.",
+                        "evidence": {
+                            "source_id": repository_source_id,
+                            "locator": f"repository@{revision}:vendor/library.js#vendored-cohort",
+                        },
+                    },
+                },
+            ],
+            "flows": [
+                {
+                    "id": "flow-main",
+                    "module_ids": ["module-main"],
+                    "page": "wiki/module.md",
+                    "anchor": "flow-main",
+                    "steps": [
+                        {
+                            "stage": stage,
+                            "description": f"Trace the {stage} portion of the behavior.",
+                            "module_ids": ["module-main"],
+                            "evidence": [
+                                evidence("implementation", f"src/main.py#{stage}")
+                            ],
+                        }
+                        for stage in WIKI.REPOSITORY_FLOW_STAGES
+                    ],
+                }
+            ],
+        }
+        relative = Path("raw/derived/repository-coverage/example") / f"{revision}.json"
+        path = self.vault / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(coverage), encoding="utf-8")
+        return relative, coverage
+
+    def rewrite_repository_coverage(self, relative: Path, coverage: dict) -> None:
+        (self.vault / relative).write_text(json.dumps(coverage), encoding="utf-8")
+
+    def source_metadata_path(self, source_id: str) -> Path:
+        return next(
+            path
+            for path in (self.vault / "raw" / "sources").glob("*/*/source.json")
+            if json.loads(path.read_text(encoding="utf-8"))["id"] == source_id
+        )
+
+    def test_repository_coverage_accepts_complete_registry(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+
+        result = self.run_cli("--json", "repository-coverage", str(relative))
+
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["computed_complete"])
+        self.assertFalse(payload["semantic_checks_performed"])
+        self.assertEqual(payload["summary"]["repository_lenses"], 10)
+        self.assertEqual(payload["summary"]["structural_errors"], 0)
+        self.assertEqual(payload["summary"]["completion_findings"], 0)
+        self.assertEqual(payload["summary"]["completion"], "complete")
+
+        coverage["repository_lenses"][0].update(
+            {
+                "status": "not-applicable",
+                "reason": "This lens does not apply to the repository kind.",
+                "evidence": [],
+            }
+        )
+        self.rewrite_repository_coverage(relative, coverage)
+        not_applicable = self.run_cli(
+            "--json", "repository-coverage", str(relative)
+        )
+        self.assertEqual(not_applicable.returncode, 0, not_applicable.stderr.decode())
+        self.assertTrue(json.loads(not_applicable.stdout)["computed_complete"])
+
+    def test_repository_coverage_reports_shallow_partial_registry(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        coverage["modules"][0]["analysis_depth"] = "surface"
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli("--json", "repository-coverage", str(relative))
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        payload = json.loads(result.stdout)
+        self.assertFalse(payload["computed_complete"])
+        self.assertEqual(payload["summary"]["surface_only"], 1)
+        self.assertEqual(payload["summary"]["structural_errors"], 0)
+        self.assertGreater(payload["summary"]["completion_findings"], 0)
+
+    def test_repository_coverage_rejects_one_step_flow_as_complete(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        coverage["flows"][0]["steps"] = coverage["flows"][0]["steps"][:1]
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli("--json", "repository-coverage", str(relative))
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        payload = json.loads(result.stdout)
+        self.assertIn(
+            "incomplete-end-to-end-flow",
+            {item["code"] for item in payload["completion_findings"]},
+        )
+
+    def test_repository_coverage_allow_partial_only_relaxes_completion(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "architecture-baseline"
+        coverage["repository_lenses"][0].update(
+            {"status": "partial", "reason": "History is still being reconciled."}
+        )
+        self.rewrite_repository_coverage(relative, coverage)
+
+        allowed = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(allowed.returncode, 0, allowed.stderr.decode())
+        payload = json.loads(allowed.stdout)
+        self.assertEqual(payload["summary"]["structural_errors"], 0)
+        self.assertGreater(payload["summary"]["completion_findings"], 0)
+
+        saved_evidence = coverage["repository_lenses"][1]["evidence"]
+        coverage["repository_lenses"][1]["evidence"] = []
+        self.rewrite_repository_coverage(relative, coverage)
+        uncovered_claim = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(uncovered_claim.returncode, 1, uncovered_claim.stderr.decode())
+        self.assertIn(
+            "covered-lens-without-evidence",
+            {item["code"] for item in json.loads(uncovered_claim.stdout)["structural_errors"]},
+        )
+        coverage["repository_lenses"][1]["evidence"] = saved_evidence
+        coverage["repository_lenses"].pop()
+        self.rewrite_repository_coverage(relative, coverage)
+        structural = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(structural.returncode, 1, structural.stderr.decode())
+        structural_payload = json.loads(structural.stdout)
+        self.assertIn(
+            "missing-repository-lens",
+            {item["code"] for item in structural_payload["structural_errors"]},
+        )
+
+    def test_repository_coverage_rejects_malformed_contract(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage.pop("kind")
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli("repository-coverage", str(relative), "--allow-partial")
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"Unsupported repository coverage kind", result.stderr)
+
+    def test_repository_coverage_rejects_mutable_git_revision(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        pinned_revision = "a" * 40
+        coverage = json.loads(
+            json.dumps(coverage).replace(pinned_revision, "main")
+        )
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+        metadata_path = self.source_metadata_path(coverage["manifest_source_id"])
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        original_path = self.vault / metadata["original_path"]
+        manifest = json.loads(original_path.read_text(encoding="utf-8"))
+        manifest["repository"]["revision"] = "main"
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "mutable-git-revision",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_rejects_direct_supporting_disposition(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["discovery_records"][0].pop("module_id")
+        coverage["discovery_records"][0].update(
+            {"disposition": "supporting", "reason": "Must use a module row."}
+        )
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"disposition is unsupported", result.stderr)
+
+    def test_repository_coverage_requires_material_verification_gap(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        coverage["modules"][0]["verification"] = {
+            "status": "not-applicable",
+            "reason": "Incorrectly hidden for this test.",
+        }
+        coverage["modules"][0]["evidence"] = [
+            item
+            for item in coverage["modules"][0]["evidence"]
+            if item["class"] != "verification"
+        ]
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "material-verification-not-applicable",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_requires_module_owner_backlink(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        module_page = self.vault / "wiki" / "module.md"
+        module_page.write_text(
+            module_page.read_text(encoding="utf-8").replace(
+                "[[repository]]", "<!-- [[repository]] -->"
+            ),
+            encoding="utf-8",
+        )
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "module-page-missing-owner-backlink",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_accepts_rendered_nested_list_link(self) -> None:
+        relative, _ = self.write_repository_coverage_fixture()
+        repository_page = self.vault / "wiki" / "repository.md"
+        repository_page.write_text(
+            repository_page.read_text(encoding="utf-8").replace(
+                "[[module]]", "- Navigation\n    - [[module]]"
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_cli("--json", "repository-coverage", str(relative))
+
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertTrue(json.loads(result.stdout)["computed_complete"])
+
+    def test_repository_coverage_requires_substantive_sections(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        repository_page = self.vault / "wiki" / "repository.md"
+        repository_page.write_text(
+            repository_page.read_text(encoding="utf-8").replace("Covered.", "&nbsp;"),
+            encoding="utf-8",
+        )
+        module_page = self.vault / "wiki" / "module.md"
+        module_page.write_text(
+            module_page.read_text(encoding="utf-8")
+            .replace("Documented.", "&#8203;")
+            .replace("End-to-end behavior.", "&nbsp;"),
+            encoding="utf-8",
+        )
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        codes = {item["code"] for item in json.loads(result.stdout)["structural_errors"]}
+        self.assertIn("repository-lens-section-empty", codes)
+        self.assertIn("dossier-section-empty", codes)
+        self.assertIn("flow-section-empty", codes)
+
+    def test_repository_coverage_requires_lens_home_backlink(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        source_id = coverage["modules"][0]["evidence"][0]["source_id"]
+        lens = coverage["repository_lenses"][0]
+        self.write_page(
+            "lens.md",
+            title="Standalone Lens",
+            sources=[source_id],
+            body=f"# Standalone Lens\n\n## {lens['anchor']}\n\nCovered in detail.\n",
+        )
+        lens["page"] = "wiki/lens.md"
+        repository_page = self.vault / "wiki" / "repository.md"
+        repository_page.write_text(
+            repository_page.read_text(encoding="utf-8") + "\n[[lens]]\n",
+            encoding="utf-8",
+        )
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "repository-lens-page-missing-home-backlink",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_rejects_flow_heading_in_code_fence(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        module_page = self.vault / "wiki" / "module.md"
+        module_page.write_text(
+            module_page.read_text(encoding="utf-8").replace(
+                "## flow-main\n\nEnd-to-end behavior.",
+                "```markdown\n## flow-main\n```\n\nEnd-to-end behavior.",
+            ),
+            encoding="utf-8",
+        )
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "missing-flow-anchor",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_isolates_material_module_sections(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        second = copy.deepcopy(coverage["modules"][0])
+        second.update({"id": "module-second", "title": "Second Capability"})
+        coverage["modules"].append(second)
+        coverage["discovery_records"].append(
+            {
+                "id": "route-second",
+                "kind": "runtime-entrypoint",
+                "locator": f"repository@{'a' * 40}:src/main.py#second",
+                "module_id": "module-second",
+            }
+        )
+        coverage["inventory_groups"][0]["module_ids"].append("module-second")
+        coverage["flows"][0]["module_ids"].append("module-second")
+        for step in coverage["flows"][0]["steps"]:
+            step["module_ids"].append("module-second")
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        codes = {item["code"] for item in json.loads(result.stdout)["structural_errors"]}
+        self.assertIn("duplicate-module-page-anchor", codes)
+        self.assertIn("material-evidence-reused-across-modules", codes)
+
+    def test_repository_coverage_rejects_dossier_owned_by_nested_module(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        revision = "a" * 40
+        repository_source_id = coverage["modules"][0]["evidence"][3]["source_id"]
+        nested_headings = {
+            facet: f"Nested {facet}" for facet in WIKI.REPOSITORY_DOSSIER_FACETS
+        }
+        coverage["modules"][0]["dossier"] = {
+            facet: {
+                "status": "documented",
+                "locator": f"wiki/module.md#{heading}",
+            }
+            for facet, heading in nested_headings.items()
+        }
+        coverage["modules"].append(
+            {
+                "id": "module-nested",
+                "title": "Nested Capability",
+                "materiality": "material",
+                "materiality_reason": "Owns an independently reachable child behavior.",
+                "parent_id": "module-main",
+                "paths": ["src/helper.py"],
+                "page": "wiki/module.md",
+                "anchor": "Nested Capability",
+                "analysis_depth": "behavioral",
+                "verification": {
+                    "status": "gap",
+                    "reason": "No representative verification was found.",
+                },
+                "dossier": {
+                    facet: {
+                        "status": "documented",
+                        "locator": f"wiki/module.md#{heading}",
+                    }
+                    for facet, heading in nested_headings.items()
+                },
+                "evidence": [
+                    {
+                        "class": evidence_class,
+                        "source_id": repository_source_id,
+                        "locator": f"repository@{revision}:src/helper.py#nested-{evidence_class}",
+                    }
+                    for evidence_class in ("reachability", "implementation", "boundary")
+                ],
+                "flow_ids": ["flow-main"],
+                "gaps": [],
+            }
+        )
+        coverage["discovery_records"].append(
+            {
+                "id": "route-nested",
+                "kind": "runtime-entrypoint",
+                "locator": f"repository@{revision}:src/helper.py#nested-entry",
+                "module_id": "module-nested",
+            }
+        )
+        coverage["inventory_groups"][0]["module_ids"].append("module-nested")
+        coverage["flows"][0]["module_ids"].append("module-nested")
+        for step in coverage["flows"][0]["steps"]:
+            step["module_ids"].append("module-nested")
+        module_page = self.vault / "wiki" / "module.md"
+        nested_body = "\n\n".join(
+            f"### {heading}\n\nDocumented." for heading in nested_headings.values()
+        )
+        module_page.write_text(
+            module_page.read_text(encoding="utf-8")
+            + f"\n## Nested Capability\n\n{nested_body}\n",
+            encoding="utf-8",
+        )
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "dossier-owned-by-nested-module",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_binds_implementation_to_module_paths(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        coverage["modules"][0]["paths"] = ["src/helper.py"]
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "module-evidence-path-mismatch",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_rejects_missing_and_out_of_bounds_evidence(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        coverage["modules"][0]["evidence"][0]["locator"] = (
+            f"repository@{'a' * 40}:src/main.py#L999-L1000"
+        )
+        self.rewrite_repository_coverage(relative, coverage)
+
+        out_of_bounds = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(out_of_bounds.returncode, 1, out_of_bounds.stderr.decode())
+        self.assertIn(
+            "evidence-line-locator-out-of-bounds",
+            {
+                item["code"]
+                for item in json.loads(out_of_bounds.stdout)["structural_errors"]
+            },
+        )
+
+        code_source_id = coverage["modules"][0]["evidence"][0]["source_id"]
+        metadata = json.loads(
+            self.source_metadata_path(code_source_id).read_text(encoding="utf-8")
+        )
+        (self.vault / metadata["original_path"]).unlink()
+        missing = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(missing.returncode, 1, missing.stderr.decode())
+        self.assertIn(
+            "evidence-source-content-missing",
+            {item["code"] for item in json.loads(missing.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_binds_selected_code_to_git_blob(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+        code_source_id = coverage["modules"][0]["evidence"][0]["source_id"]
+        metadata_path = self.source_metadata_path(code_source_id)
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        original_path = self.vault / metadata["original_path"]
+        original_path.write_bytes(b"not the source at the pinned revision\n")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "evidence-code-blob-mismatch",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_rejects_noncanonical_code_origin(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+        code_source_id = coverage["modules"][0]["evidence"][0]["source_id"]
+        metadata_path = self.source_metadata_path(code_source_id)
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["origin_uri"] = (
+            "https://github.com/example/project/issues/123?unrelated=" + "a" * 40
+        )
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "evidence-source-origin-mismatch",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_requires_one_git_object_format(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        metadata_path = self.source_metadata_path(coverage["manifest_source_id"])
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        original_path = self.vault / metadata["original_path"]
+        manifest = json.loads(original_path.read_text(encoding="utf-8"))
+        manifest["tracked_files"][1]["object_id"] = "f" * 64
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "manifest-object-id-invalid",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+        manifest["tracked_files"][1]["object_id"] = "2" * 40
+        manifest["tracked_files"][1]["mode"] = " 100644 "
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        invalid_mode = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(invalid_mode.returncode, 1, invalid_mode.stderr.decode())
+        self.assertIn(
+            "manifest-file-mode-invalid",
+            {
+                item["code"]
+                for item in json.loads(invalid_mode.stdout)["structural_errors"]
+            },
+        )
+
+    def test_repository_coverage_validates_materialized_lfs_evidence(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        metadata_path = self.source_metadata_path(coverage["manifest_source_id"])
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        original_path = self.vault / metadata["original_path"]
+        manifest = json.loads(original_path.read_text(encoding="utf-8"))
+        code_source_id = coverage["modules"][0]["evidence"][0]["source_id"]
+        code_metadata = json.loads(
+            self.source_metadata_path(code_source_id).read_text(encoding="utf-8")
+        )
+        materialized_path = self.vault / code_metadata["original_path"]
+        manifest["lfs"] = [
+            {
+                "path": "src/main.py",
+                "object_id": "sha256:" + WIKI.sha256_file(materialized_path),
+                "materialized": True,
+                "blocking": False,
+            }
+        ]
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        valid = self.run_cli("--json", "repository-coverage", str(relative))
+        self.assertEqual(valid.returncode, 0, valid.stderr.decode())
+
+        manifest["lfs"][0]["object_id"] = "sha256:" + "f" * 64
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        mismatched = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(mismatched.returncode, 1, mismatched.stderr.decode())
+        self.assertIn(
+            "evidence-code-lfs-object-mismatch",
+            {
+                item["code"]
+                for item in json.loads(mismatched.stdout)["structural_errors"]
+            },
+        )
+
+        manifest["lfs"][0].update(
+            {
+                "object_id": "sha256:" + WIKI.sha256_file(materialized_path),
+                "materialized": False,
+                "reason": "Only the tracked LFS pointer is available.",
+            }
+        )
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        unmaterialized = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(unmaterialized.returncode, 1, unmaterialized.stderr.decode())
+        self.assertIn(
+            "unmaterialized-lfs-evidence-must-be-boundary",
+            {
+                item["code"]
+                for item in json.loads(unmaterialized.stdout)["structural_errors"]
+            },
+        )
+
+    def test_repository_coverage_preserves_manifest_path_identity(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        metadata_path = self.source_metadata_path(coverage["manifest_source_id"])
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        original_path = self.vault / metadata["original_path"]
+        manifest = json.loads(original_path.read_text(encoding="utf-8"))
+        manifest["tracked_files"][0]["path"] = "src/main.py "
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        spaced = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(spaced.returncode, 1, spaced.stderr.decode())
+        self.assertIn(
+            "manifest-tracked-file-path-invalid",
+            {item["code"] for item in json.loads(spaced.stdout)["structural_errors"]},
+        )
+
+        manifest["tracked_files"][0]["path"] = "src/#main.py"
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        delimiter_path = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(delimiter_path.returncode, 1, delimiter_path.stderr.decode())
+        self.assertIn(
+            "manifest-tracked-file-path-invalid",
+            {
+                item["code"]
+                for item in json.loads(delimiter_path.stdout)["structural_errors"]
+            },
+        )
+
+        manifest["tracked_files"][0]["path"] = "src/main.py"
+        manifest["tracked_files"].append(
+            {
+                "path": "src",
+                "mode": "100644",
+                "object_id": "f" * 40,
+                "size": 1,
+            }
+        )
+        manifest["tracked_file_count"] = len(manifest["tracked_files"])
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        collision = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(collision.returncode, 1, collision.stderr.decode())
+        self.assertIn(
+            "manifest-tracked-path-collision",
+            {
+                item["code"]
+                for item in json.loads(collision.stdout)["structural_errors"]
+            },
+        )
+
+    def test_repository_coverage_rejects_non_manifest_source_binding(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        manifest_id = coverage["manifest_source_id"]
+        metadata_path = next(
+            path
+            for path in (self.vault / "raw" / "sources").glob("*/*/source.json")
+            if json.loads(path.read_text(encoding="utf-8"))["id"] == manifest_id
+        )
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata.update({"source_type": "web", "authority": "unknown"})
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        codes = {item["code"] for item in json.loads(result.stdout)["structural_errors"]}
+        self.assertIn("manifest-source-type-mismatch", codes)
+        self.assertIn("manifest-source-authority-mismatch", codes)
+
+    def test_repository_coverage_reconciles_paths_with_manifest(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        manifest_id = coverage["manifest_source_id"]
+        metadata_path = next(
+            path
+            for path in (self.vault / "raw" / "sources").glob("*/*/source.json")
+            if json.loads(path.read_text(encoding="utf-8"))["id"] == manifest_id
+        )
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        original_path = self.vault / metadata["original_path"]
+        manifest = json.loads(original_path.read_text(encoding="utf-8"))
+        manifest["tracked_files"] = [
+            entry
+            for entry in manifest["tracked_files"]
+            if entry["path"] != "src/helper.py"
+        ]
+        manifest["tracked_file_count"] = len(manifest["tracked_files"])
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        codes = {item["code"] for item in json.loads(result.stdout)["structural_errors"]}
+        self.assertIn("module-path-not-in-manifest", codes)
+        self.assertIn("evidence-path-not-in-manifest", codes)
+
+    def test_repository_coverage_validates_nonempty_manifest_collections(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+        metadata_path = self.source_metadata_path(coverage["manifest_source_id"])
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        original_path = self.vault / metadata["original_path"]
+        manifest = json.loads(original_path.read_text(encoding="utf-8"))
+        manifest.update(
+            {
+                "exclusions": [
+                    {
+                        "path": "tests",
+                        "reason": "Tests are verification evidence, not runtime behavior.",
+                        "blocking": False,
+                    }
+                ],
+                "submodules": [
+                    {
+                        "path": "vendor/library.js",
+                        "identity": "https://example.invalid/vendor/library",
+                        "revision": "b" * 40,
+                        "available": False,
+                        "blocking": False,
+                        "reason": "Represented as a parent gitlink boundary.",
+                    }
+                ],
+                "lfs": [
+                    {
+                        "path": "src/helper.py",
+                        "object_id": "sha256:" + "c" * 64,
+                        "materialized": False,
+                        "blocking": False,
+                        "reason": "The pointer is sufficient for the surface contract.",
+                    }
+                ],
+                "limitations": [
+                    {
+                        "id": "history-not-needed",
+                        "kind": "history",
+                        "reason": "No history claim is in scope.",
+                        "blocking": True,
+                    }
+                ],
+            }
+        )
+        next(
+            entry
+            for entry in manifest["tracked_files"]
+            if entry["path"] == "vendor/library.js"
+        ).update({"mode": "160000", "object_id": "b" * 40})
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        repository_source_id = coverage["modules"][0]["evidence"][3]["source_id"]
+        coverage["modules"][2].update(
+            {
+                "title": "Vendored submodule boundary",
+                "materiality": "boundary-only",
+                "materiality_reason": "The gitlink is an independent repository boundary.",
+                "page": "wiki/module.md",
+                "anchor": "submodule-boundary",
+                "analysis_depth": "surface",
+                "evidence": [
+                    {
+                        "class": "boundary",
+                        "source_id": repository_source_id,
+                        "locator": f"repository@{'a' * 40}:vendor/library.js#gitlink",
+                    }
+                ],
+            }
+        )
+        module_page = self.vault / "wiki" / "module.md"
+        module_page.write_text(
+            module_page.read_text(encoding="utf-8")
+            + "\n## submodule-boundary\n\nIndependent repository boundary.\n",
+            encoding="utf-8",
+        )
+        self.rewrite_repository_coverage(relative, coverage)
+
+        valid_partial = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(valid_partial.returncode, 0, valid_partial.stderr.decode())
+        payload = json.loads(valid_partial.stdout)
+        self.assertEqual(payload["summary"]["structural_errors"], 0)
+        self.assertEqual(payload["summary"]["blocked"], 1)
+        self.assertIn(
+            "blocking-manifest-limitation",
+            {item["code"] for item in payload["completion_findings"]},
+        )
+
+        manifest["lfs"].append(
+            {
+                "path": "vendor/library.js",
+                "object_id": "sha256:" + "d" * 64,
+                "materialized": False,
+                "blocking": False,
+                "reason": "Invalid overlap used for contract validation.",
+            }
+        )
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        overlapping_lfs = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(overlapping_lfs.returncode, 1, overlapping_lfs.stderr.decode())
+        overlap_codes = {
+            item["code"]
+            for item in json.loads(overlapping_lfs.stdout)["structural_errors"]
+        }
+        self.assertIn("manifest-lfs-mode-invalid", overlap_codes)
+        self.assertIn("manifest-lfs-submodule-overlap", overlap_codes)
+        manifest["lfs"].pop()
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        manifest["submodules"][0]["revision"] = "c" * 40
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        mismatched_gitlink = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(
+            mismatched_gitlink.returncode, 1, mismatched_gitlink.stderr.decode()
+        )
+        self.assertIn(
+            "manifest-submodule-revision-mismatch",
+            {
+                item["code"]
+                for item in json.loads(mismatched_gitlink.stdout)["structural_errors"]
+            },
+        )
+
+        manifest["submodules"][0]["revision"] = "b" * 40
+        saved_submodules = manifest["submodules"]
+        manifest["submodules"] = []
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        missing_submodule_census = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(
+            missing_submodule_census.returncode,
+            1,
+            missing_submodule_census.stderr.decode(),
+        )
+        self.assertIn(
+            "manifest-gitlink-submodule-missing",
+            {
+                item["code"]
+                for item in json.loads(missing_submodule_census.stdout)[
+                    "structural_errors"
+                ]
+            },
+        )
+        manifest["submodules"] = saved_submodules
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        original_main_path = coverage["modules"][0]["paths"]
+        original_implementation = coverage["modules"][0]["evidence"][1]["locator"]
+        coverage["modules"][0]["paths"] = ["vendor"]
+        coverage["modules"][0]["evidence"][1]["locator"] = (
+            f"repository@{'a' * 40}:vendor/library.js#ChildImplementation.execute"
+        )
+        coverage["inventory_groups"][1]["module_ids"].append("module-main")
+        self.rewrite_repository_coverage(relative, coverage)
+        escaped_submodule = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(escaped_submodule.returncode, 1, escaped_submodule.stderr.decode())
+        escaped_codes = {
+            item["code"]
+            for item in json.loads(escaped_submodule.stdout)["structural_errors"]
+        }
+        self.assertIn("material-module-owns-submodule-path", escaped_codes)
+        self.assertIn("submodule-evidence-must-be-boundary", escaped_codes)
+        self.assertIn("submodule-inventory-not-boundary-only", escaped_codes)
+        coverage["modules"][0]["paths"] = original_main_path
+        coverage["modules"][0]["evidence"][1]["locator"] = original_implementation
+        coverage["inventory_groups"][1]["module_ids"].remove("module-main")
+        self.rewrite_repository_coverage(relative, coverage)
+
+        coverage["modules"][2]["materiality"] = "excluded"
+        self.rewrite_repository_coverage(relative, coverage)
+        missing_boundary = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(missing_boundary.returncode, 1, missing_boundary.stderr.decode())
+        self.assertIn(
+            "submodule-boundary-module-missing",
+            {
+                item["code"]
+                for item in json.loads(missing_boundary.stdout)["structural_errors"]
+            },
+        )
+        coverage["modules"][2]["materiality"] = "boundary-only"
+        self.rewrite_repository_coverage(relative, coverage)
+
+        manifest["lfs"][0]["materialized"] = "no"
+        original_path.write_text(json.dumps(manifest), encoding="utf-8")
+        metadata["sha256"] = WIKI.sha256_file(original_path)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        invalid = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+        self.assertEqual(invalid.returncode, 1, invalid.stderr.decode())
+        self.assertIn(
+            "manifest-collection-boolean-invalid",
+            {item["code"] for item in json.loads(invalid.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_requires_inventory_for_every_manifest_file(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["inventory_groups"] = [
+            group
+            for group in coverage["inventory_groups"]
+            if group["id"] != "verification-tree"
+        ]
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "manifest-file-not-in-inventory",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_rejects_conflicting_inventory_disposition(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        coverage["inventory_groups"].append(
+            {
+                "id": "incorrect-exclusion",
+                "paths": ["src/main.py"],
+                "disposition": "excluded",
+                "reason": "Conflicts with the material module assignment.",
+            }
+        )
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "conflicting-inventory-assignment",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_handles_deep_parent_graph_iteratively(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        coverage["modules"][0]["analysis_depth"] = "surface"
+        template = coverage["modules"][2]
+        previous_id = template["id"]
+        for index in range(1100):
+            module_id = f"deep-excluded-{index}"
+            module = copy.deepcopy(template)
+            module.update(
+                {
+                    "id": module_id,
+                    "title": f"Deep excluded {index}",
+                    "parent_id": previous_id,
+                }
+            )
+            coverage["modules"].append(module)
+            coverage["discovery_records"].append(
+                {
+                    "id": f"deep-discovery-{index}",
+                    "kind": "excluded-cohort",
+                    "locator": f"repository@{'a' * 40}:vendor/library.js#deep-{index}",
+                    "module_id": module_id,
+                }
+            )
+            previous_id = module_id
+        coverage["modules"][0]["parent_id"] = previous_id
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(json.loads(result.stdout)["summary"]["structural_errors"], 0)
+
+    def test_repository_coverage_treats_parent_rollup_as_partial_completion(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        revision = "a" * 40
+        repository_source_id = coverage["modules"][0]["evidence"][3]["source_id"]
+        child_facets = {
+            facet: f"Child {facet}" for facet in WIKI.REPOSITORY_DOSSIER_FACETS
+        }
+        child = copy.deepcopy(coverage["modules"][0])
+        child.update(
+            {
+                "id": "module-child",
+                "title": "Child Capability",
+                "parent_id": "module-main",
+                "paths": ["src/helper.py"],
+                "anchor": "Child Capability",
+                "analysis_depth": "surface",
+                "verification": {
+                    "status": "gap",
+                    "reason": "No representative verification was found.",
+                },
+                "dossier": {
+                    facet: {
+                        "status": "documented",
+                        "locator": f"wiki/module.md#{heading}",
+                    }
+                    for facet, heading in child_facets.items()
+                },
+                "evidence": [
+                    {
+                        "class": evidence_class,
+                        "source_id": repository_source_id,
+                        "locator": (
+                            f"repository@{revision}:src/helper.py#child-{evidence_class}"
+                        ),
+                    }
+                    for evidence_class in ("reachability", "implementation", "boundary")
+                ],
+                "flow_ids": ["flow-main"],
+            }
+        )
+        coverage["modules"].append(child)
+        coverage["discovery_records"].append(
+            {
+                "id": "route-child",
+                "kind": "runtime-entrypoint",
+                "locator": f"repository@{revision}:src/helper.py#child",
+                "module_id": "module-child",
+            }
+        )
+        coverage["inventory_groups"][0]["module_ids"].append("module-child")
+        coverage["flows"][0]["module_ids"].append("module-child")
+        for step in coverage["flows"][0]["steps"]:
+            step["module_ids"].append("module-child")
+        module_page = self.vault / "wiki" / "module.md"
+        child_sections = "\n\n".join(
+            f"### {heading}\n\nDocumented for the child capability."
+            for heading in child_facets.values()
+        )
+        module_page.write_text(
+            module_page.read_text(encoding="utf-8")
+            + f"\n## Child Capability\n\nChild behavior.\n\n{child_sections}\n",
+            encoding="utf-8",
+        )
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["summary"]["structural_errors"], 0)
+        self.assertIn(
+            "incomplete-material-descendant",
+            {item["code"] for item in payload["completion_findings"]},
+        )
+
+    def test_repository_coverage_rejects_non_repository_evidence(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        evidence_source_id = coverage["modules"][0]["evidence"][0]["source_id"]
+        metadata_path = next(
+            path
+            for path in (self.vault / "raw" / "sources").glob("*/*/source.json")
+            if json.loads(path.read_text(encoding="utf-8"))["id"]
+            == evidence_source_id
+        )
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata.update({"source_type": "web", "adapter": "web"})
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertIn(
+            "non-repository-evidence-source",
+            {item["code"] for item in json.loads(result.stdout)["structural_errors"]},
+        )
+
+    def test_repository_coverage_enforces_evidence_source_roles(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        self.rewrite_repository_coverage(relative, coverage)
+        code_source_id = coverage["modules"][0]["evidence"][0]["source_id"]
+        code_metadata_path = self.source_metadata_path(code_source_id)
+        code_metadata = json.loads(code_metadata_path.read_text(encoding="utf-8"))
+        code_metadata.update(
+            {
+                "origin_uri": "https://example.invalid/other/revision",
+                "external_key": "https://example.invalid/other@revision:path",
+                "pointer_only": True,
+            }
+        )
+        code_metadata_path.write_text(json.dumps(code_metadata), encoding="utf-8")
+        repository_source_id = coverage["modules"][0]["evidence"][3]["source_id"]
+        repository_metadata_path = self.source_metadata_path(repository_source_id)
+        repository_metadata = json.loads(
+            repository_metadata_path.read_text(encoding="utf-8")
+        )
+        repository_metadata["pointer_only"] = False
+        repository_metadata_path.write_text(
+            json.dumps(repository_metadata), encoding="utf-8"
+        )
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        codes = {item["code"] for item in json.loads(result.stdout)["structural_errors"]}
+        self.assertIn("evidence-source-origin-mismatch", codes)
+        self.assertIn("evidence-source-provenance-mismatch", codes)
+        self.assertIn("evidence-source-content-missing", codes)
+        self.assertIn("repository-evidence-not-pointer", codes)
+
+    def test_repository_coverage_rejects_unsafe_and_symlinked_paths(self) -> None:
+        relative, _ = self.write_repository_coverage_fixture()
+
+        escaped = self.run_cli("repository-coverage", "../coverage.json")
+        self.assertEqual(escaped.returncode, 2)
+        self.assertIn(b"workspace-relative", escaped.stderr)
+
+        target = self.base / "coverage-target.json"
+        target.write_text((self.vault / relative).read_text(encoding="utf-8"), encoding="utf-8")
+        link = self.vault / relative.parent / "linked.json"
+        try:
+            link.symlink_to(target)
+        except OSError as exc:
+            self.skipTest(f"symlinks unavailable: {exc}")
+        symlinked = self.run_cli("repository-coverage", str(link.relative_to(self.vault)))
+        self.assertEqual(symlinked.returncode, 2)
+        self.assertRegex(symlinked.stderr, rb"(?:symlinks|escapes the workspace)")
+
+        internal_target = self.vault / relative.parent / "internal-target.json"
+        internal_target.write_text(
+            (self.vault / relative).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        internal_link = self.vault / relative.parent / "internal-link.json"
+        internal_link.symlink_to(internal_target.name)
+        internal = self.run_cli(
+            "repository-coverage", str(internal_link.relative_to(self.vault))
+        )
+        self.assertEqual(internal.returncode, 2)
+        self.assertIn(b"cannot contain symlinks", internal.stderr)
+
+    def test_repository_coverage_detects_unmapped_discovery_even_when_partial_allowed(self) -> None:
+        relative, coverage = self.write_repository_coverage_fixture()
+        coverage["batch_state"] = "functional-analysis-partial"
+        coverage["discovery_records"][0].pop("module_id")
+        coverage["discovery_records"][0].update(
+            {"disposition": "excluded", "reason": "Incorrectly classified for this test."}
+        )
+        self.rewrite_repository_coverage(relative, coverage)
+
+        result = self.run_cli(
+            "--json", "repository-coverage", str(relative), "--allow-partial"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        payload = json.loads(result.stdout)
+        self.assertIn(
+            "module-not-discovered",
+            {item["code"] for item in payload["structural_errors"]},
+        )
 
     def test_init_is_incremental_and_preserves_existing_instructions(self) -> None:
         agents = self.vault / "AGENTS.md"

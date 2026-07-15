@@ -21,7 +21,7 @@ Turn new material into reviewable, cumulative knowledge instead of a one-off sum
 ## Read References as Needed
 
 - Before opening, fetching, copying, or normalizing any source, read [references/source-handling.md](references/source-handling.md). Always read it for URLs, connectors, APIs, databases, message streams, images, audio, video, copyright-restricted content, or non-public material.
-- For a Git remote, local checkout, repository archive, or request to document or analyze a codebase into the wiki, also read [references/repository-ingestion.md](references/repository-ingestion.md). Use its Comprehensive repository wiki mode when the user asks to document the whole material repository, including an unscoped request to ingest a repository URL or directory as a project wiki. Do not treat a one-time repository ingest as a request to configure persistent synchronization.
+- For a Git remote, local checkout, repository archive, or request to document or analyze a codebase into the wiki, also read [references/repository-ingestion.md](references/repository-ingestion.md). Use its Comprehensive repository wiki mode when the user asks to document the whole material repository, including an unscoped request to ingest a repository URL or directory as a project wiki. When that mode is selected, also read [references/repository-functional-analysis.md](references/repository-functional-analysis.md) before module discovery or page planning; its registry, behavioral-depth, dossier, evidence, flow, roll-up, batching, and validation rules are mandatory. Do not treat a one-time repository ingest as a request to configure persistent synchronization.
 - For a web page, online document, or bounded documentation section, also read [references/web-and-online-document-ingestion.md](references/web-and-online-document-ingestion.md).
 - For a meeting, message thread, email chain, or conversational ticket, also read [references/meetings-messages-and-email.md](references/meetings-messages-and-email.md).
 - For a spreadsheet, database query, API response, dashboard, or metric snapshot, also read [references/structured-data-ingestion.md](references/structured-data-ingestion.md).
@@ -76,9 +76,10 @@ Turn new material into reviewable, cumulative knowledge instead of a one-off sum
 
 1. In the single-writer context, check each target file's current hash before applying changes. If a file changed, reread and merge again.
 2. Run `rebuild` to generate the catalog, source catalog, and backlinks, then run `lint`.
-3. Fix schema, broken-link, citation, classification, or index issues introduced by this ingest. Do not refactor unrelated pages opportunistically.
-4. Record one operation per file with `event ingest --message <summary> --data <json>`. Do not let multiple agents append to one shared log file.
-5. Return the source ID, dedupe status, created or updated pages, material conflicts, evidence gaps, lint result, and omitted work.
+3. For Comprehensive repository wiki mode, run `repository-coverage <coverage-json>` without `--allow-partial`. Do not claim completion unless it returns `0`; preserve its computed counts and partial state in the final report.
+4. Fix schema, broken-link, citation, classification, or index issues introduced by this ingest. Do not refactor unrelated pages opportunistically.
+5. Record one operation per file with `event ingest --message <summary> --data <json>`. Do not let multiple agents append to one shared log file.
+6. Return the source ID, dedupe status, created or updated pages, material conflicts, evidence gaps, lint result, and omitted work. For Comprehensive mode, also return the validator's candidate, module-depth, verification, blocked, unmapped, and completion counts.
 
 ## Safety Stop Conditions
 

@@ -21,6 +21,9 @@ for skill in wiki-configure wiki-ingest wiki-maintain wiki-query; do
   test -f ".agents/skills/${skill}/SKILL.md"
   test -L ".claude/skills/${skill}"
 done
+test -f ".agents/skills/wiki-ingest/references/repository-functional-analysis.md"
+test -f ".agents/skills/wiki-ingest/assets/repository-manifest.example.json"
+test -f ".agents/skills/wiki-ingest/assets/repository-coverage.example.json"
 
 CLI="$VAULT/.agents/skills/wiki-configure/scripts/wiki.py"
 python3 "$CLI" --workspace "$VAULT" init

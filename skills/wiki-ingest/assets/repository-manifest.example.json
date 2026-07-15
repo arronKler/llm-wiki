@@ -1,0 +1,73 @@
+{
+  "kind": "llm-wiki.repository-manifest",
+  "schema_version": 1,
+  "repository": {
+    "identity": "https://example.invalid/acme/widget",
+    "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "vcs": "git",
+    "tree_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "ref_context": "refs/heads/main",
+  "acquired_at": "2026-07-15T00:00:00Z",
+  "scope": "Committed tree at the pinned revision",
+  "working_tree": {
+    "clean": true,
+    "overlay_included": false
+  },
+  "tracked_file_count": 6,
+  "tracked_files": [
+    {
+      "path": "CODEOWNERS",
+      "mode": "100644",
+      "object_id": "1111111111111111111111111111111111111111",
+      "size": 120
+    },
+    {
+      "path": "config/widget.yaml",
+      "mode": "100644",
+      "object_id": "5555555555555555555555555555555555555555",
+      "size": 300
+    },
+    {
+      "path": "src/api/create_widget.py",
+      "mode": "100644",
+      "object_id": "2222222222222222222222222222222222222222",
+      "size": 4200
+    },
+    {
+      "path": "src/domain/validate_widget.py",
+      "mode": "100644",
+      "object_id": "3333333333333333333333333333333333333333",
+      "size": 900
+    },
+    {
+      "path": "tests/test_create_widget.py",
+      "mode": "100644",
+      "object_id": "4444444444444444444444444444444444444444",
+      "size": 1800
+    },
+    {
+      "path": "vendor/client/index.js",
+      "mode": "100644",
+      "object_id": "6666666666666666666666666666666666666666",
+      "size": 2400
+    }
+  ],
+  "exclusions": [
+    {
+      "path": "vendor/client",
+      "reason": "Pinned third-party code is inventoried but excluded from owned behavioral analysis.",
+      "blocking": false
+    }
+  ],
+  "submodules": [],
+  "lfs": [],
+  "limitations": [
+    {
+      "id": "history-not-required",
+      "kind": "history",
+      "reason": "No history claim is needed for the pinned implementation explanation.",
+      "blocking": false
+    }
+  ]
+}
