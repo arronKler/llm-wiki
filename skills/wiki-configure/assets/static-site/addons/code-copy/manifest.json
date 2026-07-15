@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "code-copy",
+  "name": "Code Copy",
+  "description": "Adds a copy button to code blocks with a file-compatible clipboard fallback.",
+  "requires": [],
+  "conflicts": [],
+  "priority": 50,
+  "assets": {
+    "stylesheets": ["code-copy.css"],
+    "scripts": ["code-copy.js"]
+  },
+  "options": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "success_duration_ms": {
+        "type": "integer",
+        "minimum": 500,
+        "maximum": 5000,
+        "default": 1600
+      }
+    }
+  }
+}

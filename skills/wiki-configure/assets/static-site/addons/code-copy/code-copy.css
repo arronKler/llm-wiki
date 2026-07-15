@@ -1,0 +1,53 @@
+.code-copy-block {
+  position: relative;
+  padding-top: 2.8rem;
+}
+
+.code-copy-button {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  padding: 0.32rem 0.58rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  color: var(--muted);
+  background: var(--panel-strong);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.code-copy-button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.code-copy-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.code-copy-button[data-state="success"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.code-copy-button[data-state="error"] {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.code-copy-fallback {
+  position: fixed;
+  inset: 0 auto auto 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-copy-button {
+    transition: none;
+  }
+}

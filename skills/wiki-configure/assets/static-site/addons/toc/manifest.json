@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "toc",
+  "name": "Table of Contents",
+  "description": "Builds an accessible in-page outline from exported Markdown headings.",
+  "requires": [],
+  "conflicts": [],
+  "priority": 30,
+  "assets": {
+    "stylesheets": ["toc.css"],
+    "scripts": ["toc.js"]
+  },
+  "options": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "min_level": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 6,
+        "default": 2
+      },
+      "max_level": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 6,
+        "default": 4
+      }
+    }
+  }
+}

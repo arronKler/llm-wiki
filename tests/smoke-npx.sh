@@ -31,9 +31,39 @@ printf 'release smoke evidence\n' > "$VAULT/inbox/release-smoke.txt"
 python3 "$CLI" --workspace "$VAULT" capture "$VAULT/inbox/release-smoke.txt" --classification public
 python3 "$CLI" --workspace "$VAULT" status
 python3 "$CLI" --workspace "$VAULT" lint --strict
+python3 "$CLI" --workspace "$VAULT" --json export-capabilities --format site
+
+printf '%s\n' \
+  '---' \
+  'title: Release Smoke' \
+  'type: concept' \
+  'classification: public' \
+  'created: 2026-07-15' \
+  'updated: 2026-07-15' \
+  'sources: []' \
+  '---' \
+  '' \
+  '# Release Smoke' \
+  '' \
+  'Installed static-site export works.' \
+  '' \
+  '## Verify' \
+  '' \
+  '```text' \
+  'theme and add-ons' \
+  '```' > "$VAULT/wiki/release-smoke.md"
+python3 "$CLI" --workspace "$VAULT" export outputs/site --format site --title "Release Smoke Wiki" \
+  --theme editorial --addon toc --addon graph --addon code-copy
 
 test -f "$VAULT/skills-lock.json"
 test -n "$(find "$VAULT/raw/sources" -path '*/original/release-smoke.txt' -print -quit)"
 test ! -e "$VAULT/wiki/Wiki.base"
+test -f "$VAULT/outputs/site/index.html"
+test -f "$VAULT/outputs/site/pages/release-smoke.html"
+test -f "$VAULT/outputs/site/export-report.json"
+test -f "$VAULT/outputs/site/assets/graph-data.js"
+rg -q 'data-theme="editorial"' "$VAULT/outputs/site/index.html"
+rg -q 'code-copy-button' "$VAULT/outputs/site/assets/app.js"
+test ! -e "$VAULT/outputs/site/raw"
 
 echo "npx skills smoke test passed"

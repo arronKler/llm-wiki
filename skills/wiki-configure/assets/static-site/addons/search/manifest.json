@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "search",
+  "name": "Local Search",
+  "description": "Adds dependency-free, keyboard-accessible search over the exported page index.",
+  "requires": [],
+  "conflicts": [],
+  "priority": 10,
+  "assets": {
+    "stylesheets": ["search.css"],
+    "scripts": ["search.js"]
+  },
+  "options": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 12
+      },
+      "shortcut": {
+        "type": "string",
+        "enum": ["/", "none"],
+        "default": "/"
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 ---
 name: wiki-configure
-description: Configure, initialize, migrate, and evolve a portable, cross-agent LLM wiki whose source of truth is local Markdown in a plain directory, Git repository, or workspace with optional frontends such as Obsidian. Use for workspace ownership, page schema, taxonomy, source authority, classification, freshness, data-source adapters, policy changes, migrations, upgrades, and agent discovery bridges. Trigger on configure, initialize, install, setup, migrate, add an adapter or domain, change policy or schema, move a workspace, or install bridges. Chinese triggers include 配置、初始化、安装、设置、接入数据源、改规则、改分类、迁移 wiki、移动工作区、升级技能. Do not use for daily ingestion, read-only questions, or routine linting.
+description: Configure, initialize, migrate, export, and evolve a portable, cross-agent LLM wiki whose source of truth is local Markdown in a plain directory, Git repository, or workspace with optional frontends such as Obsidian. Use for workspace ownership, page schema, taxonomy, source authority, classification, freshness, data-source adapters, static-site exports, policy changes, migrations, upgrades, and agent discovery bridges. Trigger on configure, initialize, install, setup, export or publish a static wiki, migrate, add an adapter or domain, change policy or schema, move a workspace, or install bridges. Chinese triggers include 配置、初始化、安装、设置、导出 Wiki、生成静态站点、发布知识库、接入数据源、改规则、改分类、迁移 wiki、移动工作区、升级技能. Do not use for daily ingestion, read-only questions, or routine linting.
 ---
 
 # Wiki Configure
@@ -21,6 +21,8 @@ Turn a local directory or Git repository into a stable, agent-maintained Markdow
 
 - Before initializing or changing paths, page properties, taxonomy, ownership, indexes, or optional Obsidian views, read [references/workspace-contract.md](references/workspace-contract.md).
 - Before connecting a URL, folder, Lark/Feishu, Slack, email, meeting, API, database, warehouse, message stream, or other data source, read [references/adapters-and-security.md](references/adapters-and-security.md). Always read it when authentication, company data, or trust zones are involved.
+- Before exporting, sharing, publishing, or generating a static site, read [references/export-and-publishing.md](references/export-and-publishing.md). Generate a local artifact first; never infer authorization to deploy or disclose it.
+- When the user requests a theme, visual style, table of contents, graph, code-copy controls, facets, or other optional site behavior, also read [references/export-themes-and-addons.md](references/export-themes-and-addons.md). Discover installed capabilities instead of guessing flags.
 - Before migrating legacy `data/raw/entries/wiki`, installing Codex, Claude, or generic agent bridges, moving a workspace, or upgrading the skill suite, read [references/migration-and-discovery.md](references/migration-and-discovery.md).
 
 ## Initialize a workspace
@@ -60,6 +62,15 @@ Turn a local directory or Git repository into a stable, agent-maintained Markdow
 3. Perform a read-only probe with minimum privilege, then validate one small sample. Do not bulk-ingest during configuration unless the user explicitly requests ingestion too.
 4. Confirm that the adapter output can pass through the unified `capture` command to create an immutable source ID and that derived content traces back to a raw locator.
 5. Process company and sensitive data locally by default. Do not send it externally without authorization.
+
+## Export a derived view
+
+1. Read `references/export-and-publishing.md`, inspect the requested scope and classifications, and distinguish local generation from external publication.
+2. Generate the current static-site profile with `python3 <wiki.py> --workspace <workspace-root> export outputs/site --format site`. The export scope includes only `public` by default; add other classifications only when the user explicitly authorizes them.
+3. Before composing non-default appearance or features, run `python3 <wiki.py> --workspace <workspace-root> --json export-capabilities --format site`, then use only reported theme, add-on, and option IDs. Keep command-line choices temporary; edit Workspace defaults only when explicitly requested.
+4. Inspect the JSON payload and `export-report.json`. Report the entrypoint, effective theme and add-ons, exported and excluded counts, link findings, profile hash, and any backup created by an explicit `--force` takeover.
+5. Do not hand-edit generated HTML, CSS, JavaScript, search indexes, graph data, or the export report. Change the authoritative Wiki or export profile, then regenerate.
+6. Do not deploy, upload, or share the generated directory unless the user separately authorizes that destination and disclosure boundary.
 
 ## Install agent discovery bridges
 

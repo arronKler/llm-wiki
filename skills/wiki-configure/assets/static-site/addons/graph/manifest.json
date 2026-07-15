@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "graph",
+  "name": "Knowledge Graph",
+  "description": "Renders a deterministic, accessible knowledge graph from window.LLM_WIKI_GRAPH emitted by the exporter in graph-data.js.",
+  "requires": [],
+  "conflicts": [],
+  "priority": 40,
+  "assets": {
+    "stylesheets": ["graph.css"],
+    "scripts": ["graph.js"]
+  },
+  "options": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "max_nodes": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 250
+      },
+      "height": {
+        "type": "integer",
+        "minimum": 280,
+        "maximum": 720,
+        "default": 440
+      },
+      "show_labels": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  }
+}

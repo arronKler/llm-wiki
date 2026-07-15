@@ -1,4 +1,4 @@
 interface:
   display_name: "Wiki Configure"
-  short_description: "Configure schemas, policies, adapters, and agent bridges"
-  default_prompt: "Use $wiki-configure to configure this local workspace as a portable agent-managed wiki."
+  short_description: "Configure, connect, migrate, and export a portable local wiki"
+  default_prompt: "Use $wiki-configure to configure or export this local workspace as a portable agent-managed wiki."

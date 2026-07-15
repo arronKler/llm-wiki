@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "facets",
+  "name": "Page Facets",
+  "description": "Adds client-side type, status, and domain filters to the exported home page.",
+  "requires": ["search"],
+  "conflicts": [],
+  "priority": 20,
+  "assets": {
+    "stylesheets": ["facets.css"],
+    "scripts": ["facets.js"]
+  },
+  "options": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": ["type", "status", "domains"]
+        },
+        "uniqueItems": true,
+        "default": ["type", "status", "domains"]
+      },
+      "show_counts": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  }
+}

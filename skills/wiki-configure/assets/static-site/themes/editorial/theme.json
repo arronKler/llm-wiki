@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "editorial",
+  "name": "Editorial",
+  "description": "A prose-first reading theme with warm paper tones and local serif fonts.",
+  "engine": "llm-wiki-site-v1",
+  "stylesheet": "theme.css",
+  "capabilities": ["light", "dark", "responsive", "print"],
+  "defaults": {
+    "accent": "#7c3429",
+    "density": "comfortable",
+    "content_width": "narrow",
+    "font_scale": 1.0,
+    "color_scheme": "auto"
+  }
+}

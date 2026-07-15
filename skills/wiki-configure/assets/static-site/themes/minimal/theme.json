@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "minimal",
+  "name": "Minimal",
+  "description": "A compact technical-documentation theme with crisp lines and restrained color.",
+  "engine": "llm-wiki-site-v1",
+  "stylesheet": "theme.css",
+  "capabilities": ["light", "dark", "responsive", "print"],
+  "defaults": {
+    "accent": "#315f9e",
+    "density": "compact",
+    "content_width": "wide",
+    "font_scale": 1.0,
+    "color_scheme": "auto"
+  }
+}
