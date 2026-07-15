@@ -103,7 +103,7 @@ Initialization does not overwrite existing policy, schema, `AGENTS.md`, or `CLAU
 
 ```text
 "Save this file or web page to the wiki."                         → wiki-ingest
-"Ingest this repository URL and document its architecture."       → wiki-ingest
+"Create a comprehensive wiki for this repository URL so I can understand it without reading the code." → wiki-ingest
 "Capture this meeting thread and preserve its decisions."         → wiki-ingest
 "Save this dashboard snapshot with its metric definition."        → wiki-ingest
 "What conclusions and evidence does the wiki have on pricing?"  → wiki-query

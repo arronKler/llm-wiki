@@ -6,12 +6,14 @@ Use this reference when a source is a software, infrastructure, documentation, o
 
 - [Define purpose and boundaries](#define-purpose-and-boundaries)
 - [Choose an intent mode](#choose-an-intent-mode)
+- [Build a comprehensive repository wiki](#build-a-comprehensive-repository-wiki)
 - [Resolve immutable identity](#resolve-immutable-identity)
 - [Acquire evidence read-only](#acquire-evidence-read-only)
 - [Choose an evidence representation](#choose-an-evidence-representation)
 - [Map evidence into capture](#map-evidence-into-capture)
 - [Inventory tracked content](#inventory-tracked-content)
 - [Apply coverage lenses](#apply-coverage-lenses)
+- [Validate comprehensive coverage](#validate-comprehensive-coverage)
 - [Respect authority boundaries](#respect-authority-boundaries)
 - [Cite commit, path, and line](#cite-commit-path-and-line)
 - [Integrate with mixed sources](#integrate-with-mixed-sources)
@@ -20,7 +22,7 @@ Use this reference when a source is a software, infrastructure, documentation, o
 
 ## Define purpose and boundaries
 
-Start from the user's question, not from the repository tree.
+Start from the user's question, not from the repository tree. In Comprehensive repository wiki mode, the question is broad by design: explain every material concept and system boundary at one pinned revision.
 
 - State which repository, ref, component, time boundary, and question are in scope.
 - Distinguish understanding a system from archiving its complete contents.
@@ -31,7 +33,7 @@ Start from the user's question, not from the repository tree.
 - Avoid persisting credentials, authenticated remote URLs, or secret-bearing configuration.
 - Avoid creating one wiki page per file; organize knowledge around durable subjects.
 
-Record omissions explicitly. A scoped ingest should be complete for its stated intent, not for every possible question that could be asked about the repository.
+Record omissions explicitly. A scoped ingest should be complete for its stated intent, not for every possible question that could be asked about the repository. Comprehensive mode requires broad conceptual coverage, not an answer to every possible file-level or implementation-detail question.
 
 ## Choose an intent mode
 
@@ -40,6 +42,7 @@ Select one primary mode before reading deeply. Combine modes only when the user 
 | Mode | Primary outcome | Typical evidence |
 | --- | --- | --- |
 | Orientation | Explain purpose, boundaries, and major components | Entry docs, top-level manifests, key directories, public entrypoints |
+| Comprehensive repository wiki | Create a navigable explanation of every material system, module, workflow, business rule, and operating concern so readers can understand the repository without reading source code | Tracked inventory, manifests, entrypoints, module boundaries, interfaces, models, core flows, configuration, tests, documentation, and focused history |
 | Question-led | Answer a specific architectural, product, or operational question | Narrow search results, defining symbols, relevant tests and history |
 | Domain extraction | Add durable knowledge about one subsystem or business capability | Interfaces, models, flows, ownership, configuration, focused docs |
 | Change analysis | Explain what changed and why across versions | Commit range, diff, renamed paths, tests, release notes, decisions |
@@ -47,6 +50,52 @@ Select one primary mode before reading deeply. Combine modes only when the user 
 
 For orientation, stop after the major map is evidence-backed. For question-led work, ignore unrelated subsystems. For domain extraction, follow dependencies only until the domain boundary is clear.
 For change analysis, compare immutable endpoints. For archival work, optimize for reproducibility rather than immediate synthesis.
+
+Choose Comprehensive repository wiki mode when the user explicitly asks for a comprehensive, complete, full, or all-around repository wiki; asks for documentation that removes the need to inspect code; or provides a repository URL or local directory and asks to ingest, document, or create a project wiki without narrowing the request to one question or subsystem. A URL or path alone is not authorization to persist anything. Use a narrower mode for read-only explanation, a focused question, one domain, a change range, or archival preservation.
+
+## Build a comprehensive repository wiki
+
+Comprehensive means complete conceptual coverage of the material repository areas at one immutable revision. It does not mean copying every file, reading every line, archiving every byte, or creating one page per file or directory. Every material tracked area must map to a durable wiki subject, be grouped under a documented subsystem, or appear as an explicit `not-applicable`, `excluded`, `partial`, or `blocked` gap entry.
+
+### Plan the page graph
+
+Match and update an existing canonical repository page when one exists; otherwise create one repository home page. Build a connected set of evidence-backed subject pages beneath it. Use the smallest page graph that lets a reader understand the system without opening code. Combine subjects for a small repository and split them at durable cognitive boundaries for a large repository or monorepo.
+
+| Subject | Reader questions to answer |
+| --- | --- |
+| Repository home / Start here | What does this repository do, for whom, at which revision, and where should a reader go next? |
+| Architecture and system context | Which runtime units and external systems exist, where are the boundaries, and in which direction do dependencies flow? |
+| Modules and subsystems | What is each material component responsible for, what is outside its boundary, and how does it relate to the rest of the system? |
+| Business capabilities and domain model | Which actors, entities, terminology, invariants, policies, permissions, lifecycles, and business rules shape behavior? |
+| Core workflows | How do the important user, request, job, event, and data flows proceed end to end? |
+| Interfaces and integrations | Which APIs, CLIs, events, schemas, protocols, extension points, and third-party contracts are exposed or consumed? |
+| Data and state | Where is state owned, persisted, cached, queued, migrated, retained, and made consistent? |
+| Runtime and operations | How do configuration, environments, delivery, deployment topology, observability, maintenance, and recovery work? |
+| Security, reliability, and verification | Where are trust boundaries and checks, how do failures and retries behave, and which expectations are actually tested? |
+| Decisions, evolution, and extension | Which important trade-offs, migrations, deprecated paths, and supported extension seams explain the current design? |
+| Glossary, coverage, and known gaps | Which terms need definition, what was excluded or unavailable, and where do contradictions or uncertainties remain? |
+
+The canonical home page is required in this mode and must link directly to the top-level repository subjects. Every generated repository page must be reachable from it through the page hierarchy and link back to its owning parent or the home page. Do not create empty category pages: fold a thin subject into a related page and record a `not-applicable` or grouped disposition in the coverage matrix.
+
+A module page should explain its purpose, responsibilities and non-responsibilities, entrypoints, dependencies, public contracts, owned state, business rules, participating workflows, failure and security concerns, extension points, and evidence. A workflow page should explain its trigger, actors, preconditions, sequence, module transitions, state changes, external calls, business decisions, failure and retry behavior, security checks, outputs, and observable effects. Include diagrams only when they materially clarify relationships, and keep the prose sufficient when a renderer cannot display them.
+
+### Work in evidence passes
+
+Use the same immutable repository state throughout these passes:
+
+1. Pin repository identity and build a tracked-file census with material exclusions.
+2. Discover applications, services, packages, entrypoints, interfaces, schemas, state stores, configuration, delivery assets, tests, documentation, and ownership boundaries.
+3. Derive the durable systems, business capabilities, modules, actors, entities, and workflows that should become wiki subjects.
+4. Create the page plan and coverage matrix before writing. Map every material inventory group to an owning page, grouped parent subject, or visible gap entry.
+5. Deep-read defining and representative evidence for every material component and every applicable coverage lens. Follow dependencies far enough to explain behavior and boundaries, not merely file names.
+6. Capture the repository pointer, manifest, and selected defining evidence through the generic CLI mapping before writing. Record source IDs and immutable locators in the coverage matrix; never cite an uncaptured checkout or the derived matrix as primary implementation evidence.
+7. Write the module, domain, workflow, and cross-cutting pages, then finish the repository home page from the reconciled page graph.
+8. Reconcile terminology, responsibility boundaries, dependency direction, workflow transitions, business rules, and contradictions across pages. Add bidirectional wikilinks that improve understanding.
+9. Close the coverage matrix, rebuild generated indexes, and run the normal citation, schema, link, and lint checks.
+
+For a small repository, related subjects may fit in a compact page set. For a medium repository, use pages for durable subsystems and core workflows. For a large repository or monorepo, use a hierarchy of repository, system or domain, subsystem or service, package-group, workflow, and cross-cutting pages. Inventory every workspace or package, but group trivial utilities, fixtures, generated packages, and tightly coupled leaf packages when separate pages would not help a reader.
+
+Large repositories may be processed in batches, but all batches must use the same pinned revision and one coverage matrix. If work stops before the matrix is closed, label the result incomplete and report the remaining material areas; an architecture overview alone is not a completed Comprehensive repository wiki.
 
 ## Resolve immutable identity
 
@@ -79,6 +128,7 @@ Prefer agent-native tools that expose repository files, search, commits, diffs, 
 For local Git acquisition, prefer a fresh temporary no-checkout clone with recursive submodules disabled. Do not fetch, checkout, reset, clean, or refresh the index of an existing user checkout. When inspecting an existing checkout is necessary, suppress optional locks and filesystem monitors and use object-level reads where possible. Disable repository hooks, pagers, external diff or text-conversion drivers, smudge filters, and other optional execution paths; use only an approved existing credential helper when authentication is required.
 
 Do not run package managers, build systems, generators, migrations, notebooks, test suites, binaries, or repository-provided shell commands.
+Treat helper programs tracked by the target repository as source evidence, not as trusted agent tools. Use a separately installed and approved Wiki CLI; if the only available CLI is the target repository's tracked copy, stop before executing it and remain read-only until the tool boundary is explicitly authorized.
 If behavioral execution is separately required, obtain authorization, use an isolated workflow, and capture its results as a distinct source rather than repository evidence.
 
 ## Choose an evidence representation
@@ -137,9 +187,10 @@ List material exclusions and explain their effect on coverage. Do not claim full
 
 ## Apply coverage lenses
 
-Use only the lenses needed by the selected intent mode.
+For Comprehensive repository wiki mode, evaluate every lens and mark a lens `not-applicable` with a reason instead of silently skipping it. For narrower modes, use only the lenses needed by the selected intent.
 
 - Purpose and product boundary: entry documentation, package metadata, and user-facing surfaces.
+- Domain and business logic: actors, terminology, entities, invariants, policies, permissions, lifecycle transitions, and decision rules.
 - Architecture and dependency flow: entrypoints, packages, modules, imports, service boundaries, and protocols.
 - Public interfaces: APIs, CLIs, schemas, events, extension points, and compatibility contracts.
 - Data and state: models, persistence, migrations, caches, queues, lineage, and retention.
@@ -149,7 +200,36 @@ Use only the lenses needed by the selected intent mode.
 - Verification: focused tests, fixtures, static checks, and failure-path coverage.
 - Evolution: relevant commits, release notes, migrations, and superseded designs.
 
-Sample representative files within each chosen lens. Follow references until the claim is supported or a boundary is found; do not expand merely because more files exist.
+Sample representative files within each chosen lens. In Comprehensive mode, representative evidence must cover every material subsystem recorded in the coverage matrix; sampling cannot justify an unexplained subsystem. Follow references until the claim is supported or a boundary is found; do not expand merely because more files exist.
+
+## Validate comprehensive coverage
+
+Maintain a coverage matrix in `raw/derived/` and expose a concise, human-readable summary in the repository page graph. The matrix proves conceptual coverage without turning the wiki into a file inventory. Give each material inventory group a row with:
+
+- a stable component or capability identifier;
+- its material repository paths and why they matter;
+- its owning wiki page, grouped parent subject, or visible gap entry;
+- one of `covered`, `partial`, `not-applicable`, `excluded`, or `blocked` for every coverage-lens cell, with a reason for every status other than `covered`;
+- evidence source IDs and immutable commit, path, and line locators;
+- an optional overall row status that summarizes, but never hides, the lens cells;
+- the last verified commit.
+
+Do not mark this mode complete while a material inventory group is absent from the matrix, a planned page remains unwritten, or a `partial` or `blocked` row prevents the reader goals below. Preserve non-blocking exclusions and uncertainties prominently rather than hiding them.
+
+Before acceptance, verify that a non-code reader can answer, without reading source code:
+
+- what the repository does, who uses it, and what lies outside its boundary;
+- how the major modules relate and what each one owns;
+- which key design decisions and dependency directions are evidenced, what rationale is documented, and where rationale remains unknown;
+- how core end-to-end flows cross modules and change data or state;
+- which domain entities, business rules, permissions, and lifecycle invariants govern behavior;
+- which public interfaces, integrations, configuration, delivery, and operational concerns matter;
+- where security boundaries, failure behavior, retries, observability, and verification live;
+- where supported behavior can be extended and which important gaps remain.
+
+Also verify that the repository home page reaches every generated page, no generated page is orphaned, terminology is consistent or defined, module responsibilities and workflow transitions agree across pages, and intent, implementation, tested expectation, configured default, agent inference, and observed runtime are never conflated.
+
+An explicitly evidenced unknown, such as unavailable design rationale or deployment truth that the repository cannot establish, may satisfy coverage when its scope and evidence limit are visible. It does not by itself make the wiki partial when the reader can still understand the implemented system. Never invent rationale or runtime behavior to close the matrix.
 
 ## Respect authority boundaries
 
@@ -190,10 +270,10 @@ Integrate repository evidence into the existing mixed-source wiki and its projec
 - Label whether a claim describes intent, implementation, tested expectation, configured default, or observed runtime.
 - Preserve source-specific time: commit time, effective time, deployment time, and observation time are different.
 - Keep contradictions visible when code, docs, or operational evidence disagree.
-- Create a repository overview page only when the repository itself is a durable entity in the wiki.
-- Never generate a page for every directory, package, class, function, or file.
+- Create a repository overview page only when the repository itself is a durable entity in the wiki. Comprehensive repository wiki mode makes it a durable entity and therefore requires the repository home page.
+- Never generate pages mechanically for every directory, package, class, function, or file. A material independently understandable service, subsystem, or package group may deserve its own page.
 
-Prefer a small architecture or domain synthesis that cites selected files over a file-by-file inventory rendered as prose. Keep the manifest in raw or derived evidence, not as dozens of wiki stubs.
+For narrower modes, prefer a small architecture or domain synthesis that cites selected files over a file-by-file inventory rendered as prose. Comprehensive mode produces a coordinated hierarchical page set sized to the material concepts. Keep the manifest and detailed coverage matrix in raw or derived evidence, not as dozens of wiki stubs.
 
 ## Process version updates
 
@@ -206,7 +286,8 @@ Treat every new repository revision as a new evidence state.
 5. Link the new source version to the prior one with the normal `supersedes` or version relationship.
 6. Update claims with an explicit as-of commit and preserve historically correct statements when useful.
 7. Record removed, renamed, or contradicted behavior instead of silently replacing it.
-8. Re-run repository coverage and citation checks for affected lenses only.
+8. Compare the prior and current coverage matrices so new or removed material areas are accounted for and affected pages are identified.
+9. Re-run repository coverage and citation checks for affected lenses only.
 
 Do not mutate an old snapshot to match the latest branch. Do not infer deployment from a commit alone; require an operational source when deployment status matters.
 
@@ -236,3 +317,5 @@ Accept the ingest only when:
 - no repository code ran and no credentials were persisted;
 - wiki output is concept-oriented rather than file-oriented;
 - rebuild, lint, and the normal ingest acceptance checks pass.
+
+For Comprehensive repository wiki mode, additionally require that every material tracked area appears in the coverage matrix, every applicable lens is evaluated, the reader questions in [Validate comprehensive coverage](#validate-comprehensive-coverage) are answerable, the home page provides complete navigation, no generated page is orphaned, and every partial, excluded, blocked, or not-applicable area has a visible reason. If a material gap prevents those outcomes, return a clearly labeled partial result rather than claiming comprehensive completion.

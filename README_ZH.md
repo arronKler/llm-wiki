@@ -103,7 +103,7 @@ outputs/        报告等派生产物
 
 ```text
 “把这个文件或网页保存到 Wiki。”             → wiki-ingest
-“把这个仓库 URL 录入 Wiki，并整理它的架构。” → wiki-ingest
+“为这个仓库 URL 创建一套完整 Wiki，让我不读代码也能理解整个项目。” → wiki-ingest
 “录入这段会议讨论并保留其中的决策。”         → wiki-ingest
 “保存这个 Dashboard 快照及其指标定义。”     → wiki-ingest
 “Wiki 里关于定价策略的结论和证据是什么？”   → wiki-query

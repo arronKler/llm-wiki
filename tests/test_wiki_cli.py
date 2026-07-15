@@ -76,23 +76,36 @@ class RepositoryLayoutTests(unittest.TestCase):
         metadata, body = WIKI.parse_frontmatter(skill_file.read_text(encoding="utf-8"))
         description = str(metadata["description"])
 
-        for trigger in ("Git repositories", "repository URL", "GitHub", "GitLab", "project wiki"):
+        for trigger in (
+            "Git repositories",
+            "repository URL",
+            "local repository directory",
+            "GitHub",
+            "GitLab",
+            "project wiki",
+            "comprehensive repository wiki",
+            "without opening the code",
+        ):
             self.assertIn(trigger, description)
+        self.assertIn("为代码仓库创建全量 Wiki", description)
         self.assertNotIn("analyze a GitHub", description)
         self.assertNotIn("整理代码库", description)
         self.assertIn("read-only code analysis", description)
         self.assertIn("references/repository-ingestion.md", body)
         self.assertIn("one-time repository ingest", body)
+        self.assertIn("Comprehensive repository wiki mode", body)
         self.assertTrue(reference.is_file())
 
         contract = reference.read_text(encoding="utf-8")
         for section in (
             "## Resolve immutable identity",
+            "## Build a comprehensive repository wiki",
             "## Acquire evidence read-only",
             "## Choose an evidence representation",
             "## Map evidence into capture",
             "## Inventory tracked content",
             "## Apply coverage lenses",
+            "## Validate comprehensive coverage",
             "## Respect authority boundaries",
             "## Cite commit, path, and line",
             "## Integrate with mixed sources",
@@ -102,6 +115,21 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertIn(section, contract)
         for invariant in ("full commit SHA", "pointer-only", "working-tree overlay", "supersedes"):
             self.assertIn(invariant, contract)
+        for comprehensive_contract in (
+            "| Comprehensive repository wiki |",
+            "without reading source code",
+            "major modules",
+            "key design decisions",
+            "end-to-end flows",
+            "business rules",
+            "coverage matrix",
+            "one page per file",
+            "Capture the repository pointer, manifest",
+        ):
+            self.assertIn(comprehensive_contract, contract)
+        self.assertIn("repository URL or local directory", contract)
+        self.assertIn("without narrowing the request", contract)
+        self.assertIn("Use a narrower mode for read-only explanation", contract)
         for capture_flag in ("--origin", "--source-type", "--adapter", "--external-key"):
             self.assertIn(capture_flag, contract)
         self.assertIn("Avoid blind whole-directory capture", contract)
