@@ -1,4 +1,4 @@
 interface:
   display_name: "Wiki Ingest"
-  short_description: "Capture sources into the managed local wiki"
-  default_prompt: "Use $wiki-ingest to capture this source and integrate it into my managed local wiki."
+  short_description: "Capture files, web, and repositories into the wiki"
+  default_prompt: "Use $wiki-ingest to capture this file, URL, or repository and integrate it into my managed local wiki."

@@ -70,6 +70,43 @@ class RepositoryLayoutTests(unittest.TestCase):
                 if path.is_file() and path.suffix.lower() in text_suffixes:
                     self.assertNotRegex(path.read_text(encoding="utf-8"), HAN_RE, str(path))
 
+    def test_repository_ingestion_is_routed_as_an_on_demand_reference(self) -> None:
+        skill_file = SKILLS_ROOT / "wiki-ingest" / "SKILL.md"
+        reference = SKILLS_ROOT / "wiki-ingest" / "references" / "repository-ingestion.md"
+        metadata, body = WIKI.parse_frontmatter(skill_file.read_text(encoding="utf-8"))
+        description = str(metadata["description"])
+
+        for trigger in ("Git repositories", "repository URL", "GitHub", "GitLab", "project wiki"):
+            self.assertIn(trigger, description)
+        self.assertNotIn("analyze a GitHub", description)
+        self.assertNotIn("整理代码库", description)
+        self.assertIn("read-only code analysis", description)
+        self.assertIn("references/repository-ingestion.md", body)
+        self.assertIn("one-time repository ingest", body)
+        self.assertTrue(reference.is_file())
+
+        contract = reference.read_text(encoding="utf-8")
+        for section in (
+            "## Resolve immutable identity",
+            "## Acquire evidence read-only",
+            "## Choose an evidence representation",
+            "## Map evidence into capture",
+            "## Inventory tracked content",
+            "## Apply coverage lenses",
+            "## Respect authority boundaries",
+            "## Cite commit, path, and line",
+            "## Integrate with mixed sources",
+            "## Process version updates",
+            "## Stop or accept",
+        ):
+            self.assertIn(section, contract)
+        for invariant in ("full commit SHA", "pointer-only", "working-tree overlay", "supersedes"):
+            self.assertIn(invariant, contract)
+        for capture_flag in ("--origin", "--source-type", "--adapter", "--external-key"):
+            self.assertIn(capture_flag, contract)
+        self.assertIn("Avoid blind whole-directory capture", contract)
+        self.assertRegex(contract, r"Do not (?:run|execute)")
+
     def test_release_contains_no_machine_specific_paths(self) -> None:
         forbidden = ("/Users/", "\\Users\\", "/home/")
         for path in SKILLS_ROOT.rglob("*"):
@@ -252,6 +289,43 @@ class WikiCliTests(unittest.TestCase):
         source_dir = self.vault / payload["sources"][0]["path"]
         metadata = json.loads((source_dir / "source.json").read_text(encoding="utf-8"))
         self.assertEqual(Path(metadata["original_path"]).name, incoming.name)
+
+    def test_repository_url_requires_acquisition_or_a_stable_pointer(self) -> None:
+        self.init()
+        repository_url = "https://github.com/example/project"
+        commit_sha = "a" * 40
+        commit_url = f"{repository_url}/commit/{commit_sha}"
+
+        direct = self.run_cli("capture", repository_url)
+        self.assertEqual(direct.returncode, 2)
+        self.assertIn(b"URLs must be snapshotted through --stdin or captured with --pointer-only", direct.stderr)
+
+        pointer = self.run_cli(
+            "--json",
+            "capture",
+            commit_url,
+            "--pointer-only",
+            "--title",
+            "example/project at aaaaaaaa",
+            "--source-type",
+            "repository",
+            "--adapter",
+            "git",
+            "--external-key",
+            f"github.com/example/project@{commit_sha}",
+            "--classification",
+            "public",
+        )
+        self.assertEqual(pointer.returncode, 0, pointer.stderr.decode())
+        payload = json.loads(pointer.stdout)
+        self.assertEqual(len(payload["sources"]), 1)
+        source_dir = self.vault / payload["sources"][0]["path"]
+        metadata = json.loads((source_dir / "source.json").read_text(encoding="utf-8"))
+        self.assertEqual(metadata["origin_uri"], commit_url)
+        self.assertEqual(metadata["external_key"], f"github.com/example/project@{commit_sha}")
+        self.assertEqual(metadata["source_type"], "repository")
+        self.assertEqual(metadata["adapter"], "git")
+        self.assertTrue(metadata["pointer_only"])
 
     def test_explicit_symlink_is_rejected_and_recursive_symlink_is_skipped(self) -> None:
         self.init()
