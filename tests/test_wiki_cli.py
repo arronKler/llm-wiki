@@ -107,6 +107,77 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("Avoid blind whole-directory capture", contract)
         self.assertRegex(contract, r"Do not (?:run|execute)")
 
+    def test_specialized_ingestion_references_are_routed_on_demand(self) -> None:
+        skill_file = SKILLS_ROOT / "wiki-ingest" / "SKILL.md"
+        references = skill_file.parent / "references"
+        metadata, body = WIKI.parse_frontmatter(skill_file.read_text(encoding="utf-8"))
+        description = str(metadata["description"])
+        source_handling = (references / "source-handling.md").read_text(encoding="utf-8")
+
+        for trigger in ("online documents", "meetings", "tickets", "spreadsheets", "dashboards"):
+            self.assertIn(trigger, description)
+        self.assertIn("data analysis without persistent capture", description)
+
+        specifications = {
+            "web-and-online-document-ingestion.md": (
+                (
+                    "## Resolve canonical identity",
+                    "## Acquire evidence safely",
+                    "## Choose an evidence representation",
+                    "## Map evidence into capture",
+                    "## Bound traversal and dependencies",
+                    "## Cite the captured state",
+                    "## Process updates and disappearance",
+                    "## Stop or accept",
+                ),
+                ("canonical URI", "pointer-only", "loopback", "cross-origin", "--supersedes"),
+            ),
+            "meetings-messages-and-email.md": (
+                (
+                    "## Define the conversation boundary",
+                    "## Preserve object identity and time",
+                    "## Choose snapshot or incremental evidence",
+                    "## Preserve edits, deletions, and visibility",
+                    "## Map collaboration evidence into capture",
+                    "## Distinguish statements, proposals, decisions, and actions",
+                    "## Cite stable event locators",
+                    "## Stop or accept",
+                ),
+                ("stable object ID", "--supersedes", "deletion", "no collaboration state changed"),
+            ),
+            "structured-data-ingestion.md": (
+                (
+                    "## Freeze query identity",
+                    "## Establish schema and completeness",
+                    "## Inspect spreadsheets",
+                    "## Acquire APIs with pagination",
+                    "## Resolve dashboard filters",
+                    "## Map evidence into capture",
+                    "## Define metric semantics",
+                    "## Create reproducible citations",
+                    "## Stop or accept",
+                ),
+                ("result hash", "pagination", "hidden filters", "GraphQL mutations", "read-only", "--supersedes"),
+            ),
+        }
+
+        for filename, (sections, invariants) in specifications.items():
+            self.assertIn(f"references/{filename}", body)
+            self.assertIn(f"]({filename})", source_handling)
+            reference = references / filename
+            self.assertTrue(reference.is_file())
+            contract = reference.read_text(encoding="utf-8")
+            self.assertIn("## Contents", contract)
+            self.assertLess(len(contract.splitlines()), 300)
+            self.assertIn("[source-handling.md](source-handling.md)", contract)
+            self.assertIn("[integration-contract.md](integration-contract.md)", contract)
+            for section in sections:
+                self.assertIn(section, contract)
+            for invariant in invariants:
+                self.assertIn(invariant, contract)
+            for capture_flag in ("--origin", "--source-type", "--adapter", "--external-key"):
+                self.assertIn(capture_flag, contract)
+
     def test_release_contains_no_machine_specific_paths(self) -> None:
         forbidden = ("/Users/", "\\Users\\", "/home/")
         for path in SKILLS_ROOT.rglob("*"):
@@ -326,6 +397,192 @@ class WikiCliTests(unittest.TestCase):
         self.assertEqual(metadata["source_type"], "repository")
         self.assertEqual(metadata["adapter"], "git")
         self.assertTrue(metadata["pointer_only"])
+
+    def test_specialized_ingestion_provenance_round_trips(self) -> None:
+        self.init()
+
+        def source_metadata(result: subprocess.CompletedProcess[bytes]) -> tuple[dict, dict]:
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            payload = json.loads(result.stdout)
+            self.assertEqual(len(payload["sources"]), 1)
+            source_dir = self.vault / payload["sources"][0]["path"]
+            metadata = json.loads((source_dir / "source.json").read_text(encoding="utf-8"))
+            return payload, metadata
+
+        canonical_url = "https://docs.example.com/metrics/revenue"
+        web_v1, web_v1_metadata = source_metadata(
+            self.run_cli(
+                "--json",
+                "capture",
+                "--stdin",
+                "--name",
+                "revenue.md",
+                "--title",
+                "Revenue metric",
+                "--source-type",
+                "web-page",
+                "--adapter",
+                "web",
+                "--classification",
+                "public",
+                "--authority",
+                "publisher",
+                "--origin",
+                canonical_url,
+                "--published-at",
+                "2026-07-01T00:00:00Z",
+                "--external-key",
+                "docs.example.com:metrics/revenue",
+                input_bytes=b"# Revenue\n\nVersion one.\n",
+            )
+        )
+        web_v1_id = web_v1["sources"][0]["source_id"]
+        self.assertEqual(web_v1_metadata["origin_uri"], canonical_url)
+        self.assertEqual(web_v1_metadata["source_type"], "web-page")
+        self.assertEqual(web_v1_metadata["adapter"], "web")
+        self.assertEqual(web_v1_metadata["published_at"], "2026-07-01T00:00:00Z")
+        self.assertEqual(web_v1_metadata["external_key"], "docs.example.com:metrics/revenue")
+
+        _, web_v2_metadata = source_metadata(
+            self.run_cli(
+                "--json",
+                "capture",
+                "--stdin",
+                "--name",
+                "revenue.md",
+                "--title",
+                "Revenue metric",
+                "--source-type",
+                "web-page",
+                "--adapter",
+                "web",
+                "--classification",
+                "public",
+                "--authority",
+                "publisher",
+                "--origin",
+                canonical_url,
+                "--published-at",
+                "2026-07-15T00:00:00Z",
+                "--external-key",
+                "docs.example.com:metrics/revenue",
+                "--supersedes",
+                web_v1_id,
+                input_bytes=b"# Revenue\n\nVersion two.\n",
+            )
+        )
+        self.assertEqual(web_v2_metadata["supersedes"], [web_v1_id])
+
+        _, web_pointer_metadata = source_metadata(
+            self.run_cli(
+                "--json",
+                "capture",
+                "https://docs.example.com/restricted/policy",
+                "--pointer-only",
+                "--title",
+                "Restricted policy",
+                "--source-type",
+                "web",
+                "--adapter",
+                "web",
+                "--classification",
+                "restricted",
+                "--authority",
+                "publisher",
+                "--external-key",
+                "docs.example.com:restricted/policy",
+            )
+        )
+        self.assertEqual(web_pointer_metadata["origin_uri"], "https://docs.example.com/restricted/policy")
+        self.assertEqual(web_pointer_metadata["source_type"], "web")
+        self.assertEqual(web_pointer_metadata["adapter"], "web")
+        self.assertEqual(web_pointer_metadata["external_key"], "docs.example.com:restricted/policy")
+        self.assertTrue(web_pointer_metadata["pointer_only"])
+
+        thread_file = self.vault / "thread.json"
+        thread_file.write_text(
+            json.dumps({"thread_id": "thread-42", "messages": [{"id": "m-1", "state": "edited"}]}),
+            encoding="utf-8",
+        )
+        _, thread_metadata = source_metadata(
+            self.run_cli(
+                "--json",
+                "capture",
+                str(thread_file),
+                "--source-type",
+                "message-batch",
+                "--adapter",
+                "chat",
+                "--classification",
+                "internal",
+                "--authority",
+                "participants",
+                "--origin",
+                "chat://workspace/channel/thread-42",
+                "--published-at",
+                "2026-07-15T09:00:00+08:00",
+                "--external-key",
+                "chat:thread:thread-42:batch-1",
+            )
+        )
+        self.assertEqual(thread_metadata["source_type"], "message-batch")
+        self.assertEqual(thread_metadata["classification"], "internal")
+        self.assertEqual(thread_metadata["authority"], "participants")
+
+        result_file = self.vault / "revenue-result.csv"
+        result_file.write_text("month,revenue\n2026-06,42\n", encoding="utf-8")
+        _, result_metadata = source_metadata(
+            self.run_cli(
+                "--json",
+                "capture",
+                str(result_file),
+                "--source-type",
+                "query-result",
+                "--adapter",
+                "warehouse",
+                "--classification",
+                "internal",
+                "--authority",
+                "system-of-record",
+                "--origin",
+                "warehouse://analytics/jobs/job-123",
+                "--published-at",
+                "2026-06-30T23:59:59Z",
+                "--external-key",
+                "warehouse:job:job-123:result",
+            )
+        )
+        self.assertEqual(result_metadata["source_type"], "query-result")
+        self.assertEqual(result_metadata["adapter"], "warehouse")
+        self.assertEqual(result_metadata["external_key"], "warehouse:job:job-123:result")
+        self.assertEqual(result_metadata["published_at"], "2026-06-30T23:59:59Z")
+
+        dashboard_uri = "dashboard://analytics/revenue/tiles/monthly"
+        _, dashboard_metadata = source_metadata(
+            self.run_cli(
+                "--json",
+                "capture",
+                dashboard_uri,
+                "--pointer-only",
+                "--title",
+                "Monthly revenue dashboard",
+                "--source-type",
+                "dashboard",
+                "--adapter",
+                "bi",
+                "--classification",
+                "internal",
+                "--authority",
+                "system-of-record",
+                "--external-key",
+                "bi:dashboard:revenue:tile:monthly",
+            )
+        )
+        self.assertEqual(dashboard_metadata["origin_uri"], dashboard_uri)
+        self.assertEqual(dashboard_metadata["source_type"], "dashboard")
+        self.assertEqual(dashboard_metadata["adapter"], "bi")
+        self.assertEqual(dashboard_metadata["external_key"], "bi:dashboard:revenue:tile:monthly")
+        self.assertTrue(dashboard_metadata["pointer_only"])
 
     def test_explicit_symlink_is_rejected_and_recursive_symlink_is_skipped(self) -> None:
         self.init()

@@ -1,6 +1,6 @@
 ---
 name: wiki-ingest
-description: Capture new evidence from files, web pages, Git repositories and codebases, notes, meetings, messages, email, images, audio, video, database queries, API results, or conversations into a managed local Markdown workspace, then integrate it into the long-lived wiki with immutable sources, claim-level citations, conflict records, bidirectional links, and audit events. Use when the user asks to capture, ingest, import, file, process, clip, sync, remember, add a source, ingest a repository URL, import a GitHub or GitLab codebase, or build project wiki knowledge from code. Chinese triggers include 记住、保存、收录、导入、同步、整理、消化、吸收、归档、录入仓库、把代码库收录进 Wiki、从代码生成项目 Wiki. Do not use for read-only code analysis, Q&A, lint-only work, or workspace configuration changes.
+description: Capture new evidence from files, web pages and online documents, Git repositories and codebases, notes, meetings, messages, email, tickets, images, audio, video, spreadsheets, database queries, API results, dashboards, or conversations into a managed local Markdown workspace, then integrate it into the long-lived wiki with immutable sources, claim-level citations, conflict records, bidirectional links, and audit events. Use when the user asks to capture, ingest, import, file, process, clip, sync, remember, add a source, ingest a repository URL, import a GitHub or GitLab codebase, build project wiki knowledge from code, preserve a conversation record, or save a dataset or metric snapshot. Chinese triggers include 记住、保存、收录、导入、同步、整理、消化、吸收、归档、收录网页、录入仓库、录入会议记录、保存业务数据、把代码库收录进 Wiki、从代码生成项目 Wiki. Do not use for read-only source review, read-only code analysis, data analysis without persistent capture, Q&A, lint-only work, or workspace configuration changes.
 ---
 
 # Wiki Ingest
@@ -22,6 +22,9 @@ Turn new material into reviewable, cumulative knowledge instead of a one-off sum
 
 - Before opening, fetching, copying, or normalizing any source, read [references/source-handling.md](references/source-handling.md). Always read it for URLs, connectors, APIs, databases, message streams, images, audio, video, copyright-restricted content, or non-public material.
 - For a Git remote, local checkout, repository archive, or request to document or analyze a codebase into the wiki, also read [references/repository-ingestion.md](references/repository-ingestion.md). Do not treat a one-time repository ingest as a request to configure persistent synchronization.
+- For a web page, online document, or bounded documentation section, also read [references/web-and-online-document-ingestion.md](references/web-and-online-document-ingestion.md).
+- For a meeting, message thread, email chain, or conversational ticket, also read [references/meetings-messages-and-email.md](references/meetings-messages-and-email.md).
+- For a spreadsheet, database query, API response, dashboard, or metric snapshot, also read [references/structured-data-ingestion.md](references/structured-data-ingestion.md).
 - Before creating or modifying any wiki page, read [references/integration-contract.md](references/integration-contract.md). Also read it when handling legacy `raw/entries`, `also`, `last_updated`, or `_index.md`.
 
 ## Workflow
@@ -45,7 +48,7 @@ Turn new material into reviewable, cumulative knowledge instead of a one-off sum
    python3 <wiki.py> --workspace <workspace-root> capture <stable-uri> --pointer-only --title <title>
    ```
 
-   A normal repository URL is not a non-pointer input to `capture`. Resolve and acquire it through the repository workflow first, then capture selected local evidence, an approved manifest or archive, or a stable commit pointer.
+   A normal remote URL, including a repository URL, is not a non-pointer input to `capture`. Resolve and acquire it through the relevant source workflow first, then capture an approved local or stdin snapshot, manifest, archive, selected evidence, or stable pointer.
 
 2. Store original bytes or a stable snapshot for files, URLs, and connector results. Use pointer-only when content cannot be stored legally or safely, and state the reduced reproducibility.
 3. Record the CLI's `source_id`, content hash, workspace-relative path, and dedupe or variant status. Reuse an existing source only when both content and provenance/security context match. Keep a capture variant when identical bytes have different origins or sensitivity. Create a new source ID when content changes, record the supersedes relationship, and never modify an old snapshot.
@@ -81,5 +84,5 @@ Turn new material into reviewable, cumulative knowledge instead of a one-off sum
 
 - If a raw snapshot hash disagrees with its record, stop writing and hand off to `wiki-maintain` for audit.
 - If the user requests read-only review, preview, or discussion, return a plan only; do not capture, write an event, or modify the wiki.
-- Keep a one-time repository ingest or refresh at a specified revision in this workflow. If the task requires a reusable adapter, continuous synchronization, schema, policy, ownership, agent bridges, or a legacy directory change, hand off to `wiki-configure`.
+- Keep a one-time bounded ingest or refresh in this workflow. If the task requires a reusable adapter, continuous synchronization, schema, policy, ownership, agent bridges, or a legacy directory change, hand off to `wiki-configure`.
 - If the task asks a question without providing a new source, hand off to `wiki-query`.

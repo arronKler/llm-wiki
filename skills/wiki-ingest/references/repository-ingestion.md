@@ -108,6 +108,8 @@ Use the generic CLI rather than handcrafting source envelopes. Map repository pr
 
 Include at least these fields in a manifest: schema version, canonical repository, version-control system, full commit SHA, tree ID when available, ref context, acquisition time, scope, clean or working-tree overlay state, tracked-file count, selected paths with blob or content hashes, material exclusions, submodule and LFS state, and reproducibility limits.
 
+Treat an agent-generated repository manifest as provenance and coverage evidence with `--authority agent-provenance`. Cite selected repository blobs, not the manifest, for substantive implementation claims.
+
 Use `--supersedes <prior-source-id>` for a later repository evidence state when the prior state is known. Never use a branch URL, temporary checkout path, or credential-bearing remote as the durable origin.
 
 ## Inventory tracked content

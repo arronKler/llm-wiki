@@ -5,10 +5,10 @@
 | Source | Capture mode | Preserve |
 | --- | --- | --- |
 | Local files, Markdown, PDFs, images, export bundles | snapshot | Original bytes, filename, MIME type, hash, original path |
-| Web pages, online documents, message threads, meeting records | snapshot | Stable URL or object ID, fetch time, original response or export, attachments |
+| [Web pages, online documents, bounded documentation sections](web-and-online-document-ingestion.md) | snapshot or pointer-only | Canonical URL or object ID, publication and fetch time, original response or export, attachments, scope |
 | [Git repository, local checkout, repository archive](repository-ingestion.md) | fixed-commit pointer, manifest, or selected snapshot | Canonical repository, commit SHA or export state, scope, paths, hashes, retrieval limits |
-| Slack, Feishu, email, or API streams | incremental | Cursor, time range, object IDs, batch snapshots, timezone |
-| Databases, data warehouses, dashboards | query | SQL or query definition, parameters, execution time, timezone, schema, row count, result hash |
+| [Meetings, messages, email, conversational tickets](meetings-messages-and-email.md) | snapshot or incremental | Event, thread, participant, and message IDs; batch window; edit and deletion state; timezone; attachments |
+| [Spreadsheets, databases, APIs, dashboards](structured-data-ingestion.md) | snapshot or query | Query or object identity, parameters, execution time, timezone, schema, filters, completeness, result hash |
 | Restricted or copyrighted content that cannot be copied | pointer-only | Stable URI, title, verification time, validation details, reproducibility limitation |
 | Content supplied directly by the user in conversation | stdin snapshot | Original text, time, conversation context identifier, user-provided title |
 
@@ -21,12 +21,14 @@ Treat a raw source as an evidence unit, not an editable note. Preserve at least:
 - `source_id`, source type, title, origin URI or human-owned original path.
 - Original content SHA-256, MIME type, snapshot time, and publication or business-effective time.
 - Adapter, authority, classification, and freshness SLA.
-- Parent, batch, cursor, or query ID, plus `supersedes` and `superseded_by`.
+- Parent, batch, cursor, or query ID when present, plus forward `supersedes` relationships for replacement evidence states. Do not mutate an old source merely to add a reverse relationship.
 - Original path, derived paths, and available locator types.
 
 Reference the same source when identical bytes share the same capture context. Keep variants when identical bytes came from different systems or have different sensitivity. Create a new source when content or business version changes, then link the versions. Never "update" a source by modifying an old snapshot.
 
 Treat legacy `raw/entries/*.md` as valid immutable sources. Preserve their `id`, `source_type`, `source_path`, and other frontmatter. Do not rewrite them merely to adopt the newer `src-*` format.
+
+Treat a provider-native manifest or schema as source evidence. Treat an agent-generated acquisition manifest as provenance and coverage evidence: keep it as derived navigation by default, or capture it with `authority` set to `agent-provenance` when immutable reconstruction requires it. Cite such a manifest only for acquisition, inventory, exclusions, or reproducibility claims; cite the underlying components for substantive claims.
 
 ## Handle Human-Owned Content
 
