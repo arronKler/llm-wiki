@@ -147,6 +147,45 @@ class RepositoryLayoutTests(unittest.TestCase):
                 if path.is_file() and path.suffix.lower() in text_suffixes:
                     self.assertNotRegex(path.read_text(encoding="utf-8"), HAN_RE, str(path))
 
+    def test_web_provider_fallbacks_are_routed_and_evidence_preserving(self) -> None:
+        skill_file = SKILLS_ROOT / "wiki-ingest" / "SKILL.md"
+        reference = (
+            SKILLS_ROOT
+            / "wiki-ingest"
+            / "references"
+            / "web-provider-fallbacks.md"
+        )
+        _, body = WIKI.parse_frontmatter(skill_file.read_text(encoding="utf-8"))
+
+        self.assertTrue(reference.is_file())
+        self.assertIn("references/web-provider-fallbacks.md", body)
+        self.assertIn("after ordinary acquisition fails", body)
+
+        contract = reference.read_text(encoding="utf-8")
+        for section in (
+            "## Apply a recipe consistently",
+            "## X or Twitter public post through FxTwitter",
+            "### Acquire one bounded representation",
+            "### Validate before capture",
+            "### Preserve provenance and authority",
+            "## Add another provider recipe",
+        ):
+            self.assertIn(section, contract)
+        for invariant in (
+            "https://api.fxtwitter.com/2/status/<id>",
+            "status.id",
+            "status.type: tombstone",
+            "retrieved_via",
+            "third-party mirror",
+            "Do not expand into its thread",
+            "Never forward cookies",
+            "Do not use an FxTwitter URL as the canonical origin",
+            "provider object ID and lookup time are themselves disclosures",
+            "A differing handle alone may reflect an account rename",
+            "mark it out of scope",
+        ):
+            self.assertIn(invariant, contract)
+
     def test_repository_ingestion_is_routed_as_an_on_demand_reference(self) -> None:
         skill_file = SKILLS_ROOT / "wiki-ingest" / "SKILL.md"
         reference = SKILLS_ROOT / "wiki-ingest" / "references" / "repository-ingestion.md"
